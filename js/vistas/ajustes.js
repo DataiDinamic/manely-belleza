@@ -1,0 +1,84 @@
+// Ajustes: datos del centro, horario, PIN y sesión
+import * as db from '../db.js';
+import { esc, aviso, errorAviso, cargando, datosFormulario, confirmar } from '../util.js';
+import { leerAjustes, guardarAjustes } from '../ajustes.js';
+import { cambiarPin, fijarMinutosBloqueo, bloquearYa } from '../pin.js';
+
+export async function render(el, { cuenta, alSalir }) {
+  const n = db.negocioActual() || {};
+  const aj = leerAjustes();
+  el.innerHTML = `
+    <section class="ajustes" aria-labelledby="tituloAjustes">
+      <header class="barra"><h1 id="tituloAjustes" class="barra-titulo">Ajustes</h1></header>
+
+      <form class="tarjeta" data-form="negocio" novalidate>
+        <h2>Datos del centro</h2>
+        <p class="texto-suave">Saldrán en las facturas.</p>
+        <div class="fila-2">
+          <label class="campo"><span>Nombre comercial</span><input name="nombre" value="${esc(n.nombre || '')}"></label>
+          <label class="campo"><span>Titular o razón social</span><input name="razon_social" value="${esc(n.razon_social || '')}"></label>
+        </div>
+        <div class="fila-2">
+          <label class="campo"><span>NIF</span><input name="nif" value="${esc(n.nif || '')}" autocapitalize="characters"></label>
+          <label class="campo"><span>Teléfono</span><input name="telefono" type="tel" value="${esc(n.telefono || '')}"></label>
+        </div>
+        <label class="campo"><span>Dirección</span><input name="direccion" value="${esc(n.direccion || '')}"></label>
+        <div class="fila-3">
+          <label class="campo"><span>Código postal</span><input name="cp" inputmode="numeric" value="${esc(n.cp || '')}"></label>
+          <label class="campo"><span>Población</span><input name="poblacion" value="${esc(n.poblacion || '')}"></label>
+          <label class="campo"><span>Provincia</span><input name="provincia" value="${esc(n.provincia || '')}"></label>
+        </div>
+        <label class="campo"><span>Email</span><input name="email" type="email" value="${esc(n.email || '')}"></label>
+        <div class="acciones-form"><button class="btn btn-principal">Guardar datos del centro</button></div>
+      </form>
+
+      <form class="tarjeta" data-form="dispositivo">
+        <h2>En este dispositivo</h2>
+        <div class="fila-3">
+          <label class="campo"><span>La agenda empieza a las</span><input type="time" name="apertura" step="1800" value="${esc(aj.apertura)}"></label>
+          <label class="campo"><span>y termina a las</span><input type="time" name="cierre" step="1800" value="${esc(aj.cierre)}"></label>
+          <label class="campo"><span>Bloquear tras</span>
+            <select name="bloqueo">${[1, 2, 5, 10, 15, 30].map((m) => `<option value="${m}" ${Number(aj.bloqueo) === m ? 'selected' : ''}>${m} min sin usar</option>`).join('')}</select></label>
+        </div>
+        <div class="acciones-form">
+          <button class="btn btn-principal">Guardar</button>
+          <button type="button" class="btn" data-a="pin">Cambiar PIN</button>
+          <button type="button" class="btn" data-a="bloquear">Bloquear ahora</button>
+        </div>
+      </form>
+
+      <section class="tarjeta">
+        <h2>Cuenta</h2>
+        <p>${db.modo === 'demo' ? 'Modo demostración: los datos son de ejemplo y se guardan solo en este navegador.' : `Has entrado como <strong>${esc(cuenta)}</strong>.`}</p>
+        <div class="acciones-form">
+          <button class="btn" data-a="salir">Cerrar sesión</button>
+          ${db.modo === 'demo' ? '<button class="btn btn-peligro-suave" data-a="reiniciar-demo">Borrar datos de ejemplo</button>' : ''}
+        </div>
+      </section>
+      <p class="texto-suave version">Manely Belleza · versión alfa 0.1</p>
+    </section>`;
+
+  el.querySelector('[data-form="negocio"]').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    try { cargando(true); await db.guardarNegocio({ ...n, ...datosFormulario(e.target) }); aviso('Datos del centro guardados'); }
+    catch (err) { errorAviso(err); } finally { cargando(false); }
+  });
+  el.querySelector('[data-form="dispositivo"]').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const d = datosFormulario(e.target);
+    if (d.cierre <= d.apertura) return aviso('La hora de cierre tiene que ser posterior a la de apertura.', 'error');
+    guardarAjustes({ apertura: d.apertura, cierre: d.cierre, bloqueo: Number(d.bloqueo) });
+    fijarMinutosBloqueo(d.bloqueo);
+    aviso('Ajustes guardados');
+  });
+  el.addEventListener('click', async (e) => {
+    const a = e.target.closest('[data-a]')?.dataset.a;
+    if (a === 'pin') { await cambiarPin(cuenta); aviso('PIN cambiado'); }
+    if (a === 'bloquear') bloquearYa();
+    if (a === 'salir' && await confirmar('¿Cerrar sesión?', { detalle: 'Para volver a entrar necesitarás el email y la contraseña.', si: 'Cerrar sesión' })) alSalir();
+    if (a === 'reiniciar-demo' && await confirmar('¿Borrar los datos de ejemplo?', { detalle: 'Se volverán a crear los datos de ejemplo iniciales.', si: 'Borrar', peligro: true })) {
+      try { localStorage.removeItem('mb_demo_v1'); } catch { /* */ }
+      location.reload();
+    }
+  });
+}
