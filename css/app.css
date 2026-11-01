@@ -944,3 +944,13 @@ body.con-tpv { overflow: hidden; }
 .opciones-aviso .btn { min-height: 52px; }
 .ya-hecho[hidden] { display: none; }
 .inv-resumen > .tile-boton { background: var(--papel); border: 1px solid var(--linea); border-radius: 14px; padding: 12px 14px; display: block; }
+.trimestres { display: none; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: -4px 0 14px; }
+.form-sec[data-periodo="trimestre"] .trimestres { display: grid; }
+.trimestres span { display: grid; gap: 2px; padding: 8px 10px; border-radius: 10px; background: var(--lavanda-2); text-align: center; }
+.trimestres small { font-size: .74rem; color: var(--suave); font-weight: 600; }
+.trimestres b { color: var(--violeta-osc); }
+@media (max-width: 560px) { .trimestres { grid-template-columns: repeat(2, 1fr); } }
+.lista-copia { list-style: none; margin: 12px 0 0; padding: 0; border: 1px solid var(--linea); border-radius: var(--r); }
+.lista-copia li { display: flex; justify-content: space-between; gap: 12px; padding: 8px 12px; }
+.lista-copia li + li { border-top: 1px solid var(--linea); }
+.lista-copia b { font-variant-numeric: tabular-nums; }

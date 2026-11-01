@@ -1,4 +1,4 @@
-# Manely Belleza · app de gestión (alfa 0.6.1)
+# Manely Belleza · app de gestión (alfa 0.7)
 
 Agenda, clientas y servicios. Funciona en móvil, tablet y ordenador, y se instala como app desde el navegador.
 
@@ -92,9 +92,9 @@ En **Catálogo → Inventario**, el material que se gasta y no se cobra (algodon
 **Instalación:** ejecutar `supabase/005_secretaria.sql` en el SQL Editor (si ya se ejecutó con la 0.6, ejecutarlo otra vez: añade dos campos; no borra nada) y subir los archivos.
 
 Sección **Avisos** (campanita en el menú), para lo que no tiene que ver con las clientas: alquiler, luz, cuota de autónomos, papeles al gestor, un curso…
-- Pestañas por periodo: **Total** (todo), **Año**, **Trimestre**, **Mes**, **Semana**, **Día** y **Puntual** (una sola vez). En cada una, sus avisos y el botón **Gasto nuevo**.
+- Pestañas por periodo: **Total** (todo), **Año**, **Trimestre**, **Mes**, **Semana** y **Puntual** (una sola vez). En cada una, sus avisos y el botón **Gasto nuevo**.
 - En el formulario se elige el periodo y **cuándo toca**: el día y el mes (año), el día y el mes del trimestre (p. ej. el día 1 de enero, abril, julio y octubre), el día del mes (el 31 cae el 30 en los meses de 30 días), el día de la semana o la fecha (puntual), y la hora.
-- **Aviso** con la antelación que se quiera (minutos, horas, días o semanas antes) y después **recordar cada día hasta marcarlo** o **no recordar más**.
+- **Aviso** con una antelación que tenga sentido para el periodo (en uno semanal, como mucho 6 días; en uno mensual, hasta 3 semanas; en uno trimestral, hasta 1 mes; en uno anual o puntual, hasta 3 meses) y después **recordar cada día hasta marcarlo** o **no recordar más**.
 - Importe opcional. Con importe, el botón es **Pagado** (se apunta lo pagado de verdad); sin importe, **Hecho**. También **Saltar esta vez**.
 - Un gasto puntual ya pagado (una lámpara, un curso) se apunta marcando **Ya está pagado o hecho**.
 - Arriba: gastos fijos del mes, **pagado este mes** (al tocarlo, lo pagado mes a mes con el **total del trimestre** para el gestor), lo que falta por pagar y lo atrasado. El número rojo del menú indica cuántas cosas están avisando.
@@ -103,11 +103,19 @@ Sección **Avisos** (campanita en el menú), para lo que no tiene que ver con la
 
 **Cómo suenan los avisos**: campanita y vibración, hasta 3 veces, y se pueden posponer 10 minutos. Suenan **mientras la app está abierta**, también en segundo plano o con la pantalla bloqueada por el PIN (en ese caso sin botones de acción). Si la app está cerrada del todo, el aviso sale al abrirla: conviene dejarla abierta en la tablet del salón. En *Ajustes → Avisos*: activar o no en cada dispositivo, sonido, **Probar aviso** y notificaciones del sistema. Avisos con la app cerrada (push): próxima versión.
 
+## Versión 0.7: copia de seguridad
+
+**Instalación:** ejecutar `supabase/006_copias.sql` en el SQL Editor (después del 005) y subir los archivos.
+
+En **Ajustes → Copia de seguridad**:
+- **Descargar datos**: descarga `Manely-copia-AAAA-MM-DD.zip` con todo (citas, clientas, servicios, productos, cobros, facturas, cierres de caja, inventario y avisos) en formato JSON: `datos.json` con todo junto y `tablas/` con cada tabla por separado. Conviene guardarlo fuera de la tablet (correo, Google Drive, pendrive) y hacer una copia al menos una vez al mes; la app indica cuándo se hizo la última desde ese dispositivo.
+- **Introducir datos**: se elige ese .zip (sin descomprimir), se ve lo que contiene y, tras el PIN, se añade a la app **todo lo que falte**. Lo que ya está no se cambia ni se duplica, así que repetirlo no hace daño. Funciona también en un proyecto de Supabase nuevo y vacío (por ejemplo, si hubiera que empezar de cero): se ejecutan los SQL 001 a 006, se entra y se introducen los datos.
+
 ## Límites del plan gratuito de Supabase
 
 - El proyecto **se pausa tras una semana sin uso**; con uso diario no pasa. Si se pausa, se reactiva desde el panel.
 - 500 MB de base de datos y 1 GB de archivos: para un centro, años de citas.
-- Copias de seguridad: el plan Pro guarda 7 días. En el gratuito conviene exportar los datos con regularidad (la exportación llega en la fase 4).
+- Copias de seguridad: el plan Pro guarda 7 días. En el gratuito, usar **Ajustes → Descargar datos** con regularidad.
 
 ## Estructura
 
@@ -125,6 +133,7 @@ js/factura.js           facturas: datos, PDF, enviar y descargar
 js/ics.js               lectura de calendarios .ics (Google Calendar)
 js/importar.js          pantalla de importación de citas
 js/avisos.js            avisos: fechas que se repiten, sonido y notificaciones
+js/copia.js             copia de seguridad: descargar e introducir datos
 js/fechas.js            fechas en hora local (sin desfases)
 js/vistas/*.js          agenda, caja, clientas, catálogo (servicios, productos, inventario), avisos (secretaria.js), ajustes
 supabase/001_fase1.sql  tablas, reglas de seguridad y funciones (fase 1)
@@ -132,6 +141,7 @@ supabase/002_fase2_caja.sql  productos, cobros y cierres de caja (fase 2)
 supabase/003_facturas.sql    facturas con numeración correlativa (0.3)
 supabase/004_inventario.sql  inventario de material (0.5)
 supabase/005_secretaria.sql  avisos: gastos y obligaciones que se repiten (0.6)
+supabase/006_copias.sql      recuperar una copia de seguridad (0.7)
 sw.js, manifest         instalación como app
 ```
 

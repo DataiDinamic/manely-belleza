@@ -478,6 +478,82 @@ export async function borrarRegistro(id) {
 }
 
 // =====================================================================
+// Copia de seguridad: descargar todo y volver a introducirlo
+// =====================================================================
+export const TABLAS_COPIA = ['clientas', 'servicios', 'productos', 'citas', 'cita_servicios', 'cobros', 'cobro_lineas', 'cobro_pagos',
+  'facturas', 'cierres_caja', 'consumibles', 'consumible_movimientos', 'obligaciones', 'obligacion_registros'];
+// En el modo demostración algunas tablas se guardan con otro nombre o dentro de otras
+const DEMO_NOMBRE = { cierres_caja: 'cierres', consumible_movimientos: 'movimientos', obligacion_registros: 'registros' };
+
+async function todasLasFilas(tabla) {
+  const filas = [];
+  for (let desde = 0; ; desde += 1000) {
+    const parte = comprobar(await sb.from(tabla).select('*').eq('negocio_id', N).order('id').range(desde, desde + 999));
+    filas.push(...parte);
+    if (parte.length < 1000) return filas;
+  }
+}
+
+// Devuelve { app, version, creada, negocio, <tabla>: [filas]… } y la lista de tablas que no se pudieron leer
+export async function exportarDatos(version) {
+  const copia = { app: 'Manely Belleza', version, creada: new Date().toISOString(), modo };
+  const faltan = [];
+  if (modo === 'demo') {
+    const d = demo.leer();
+    copia.negocio = { ...d.negocio };
+    for (const t of TABLAS_COPIA) copia[t] = [];
+    for (const t of ['clientas', 'servicios', 'productos', 'facturas', 'consumibles', 'obligaciones']) copia[t] = structuredClone(d[t] || []);
+    for (const t of ['cierres_caja', 'consumible_movimientos', 'obligacion_registros']) copia[t] = structuredClone(d[DEMO_NOMBRE[t]] || []);
+    for (const c of d.citas || []) {
+      const { cita_servicios: cs = [], ...cita } = c;
+      copia.citas.push(cita);
+      copia.cita_servicios.push(...cs.map((x) => ({ ...x, cita_id: c.id })));
+    }
+    for (const c of d.cobros || []) {
+      const { cobro_lineas: l = [], cobro_pagos: pg = [], ...cobro } = c;
+      copia.cobros.push(cobro);
+      copia.cobro_lineas.push(...l.map((x) => ({ ...x, cobro_id: c.id })));
+      copia.cobro_pagos.push(...pg.map((x) => ({ ...x, cobro_id: c.id })));
+    }
+    return { copia, faltan };
+  }
+  const { id, rol, ...datosNegocio } = negocio || {};
+  copia.negocio = datosNegocio;
+  for (const t of TABLAS_COPIA) {
+    try { copia[t] = await todasLasFilas(t); }
+    catch (e) { console.warn('Copia, tabla', t, e); copia[t] = []; faltan.push(t); }
+  }
+  return { copia, faltan };
+}
+
+// Añade lo que falte de una copia (lo que ya existe no se toca). Devuelve cuántas filas ha añadido por tabla.
+export async function restaurarDatos(copia) {
+  if (copia?.app !== 'Manely Belleza') throw new Error('El archivo no es una copia de Manely Belleza');
+  if (modo !== 'demo') return comprobar(await sb.rpc('restaurar_copia', { p_negocio: N, p_datos: copia }));
+  const d = demo.leer();
+  const r = {};
+  const anadir = (clave, filas) => {
+    d[clave] ||= [];
+    const hay = new Set(d[clave].map((x) => x.id));
+    const nuevas = (filas || []).filter((x) => x?.id && !hay.has(x.id));
+    d[clave].push(...structuredClone(nuevas));
+    return nuevas.length;
+  };
+  for (const t of ['clientas', 'servicios', 'productos', 'facturas', 'consumibles', 'obligaciones']) r[t] = anadir(t, copia[t]);
+  for (const t of ['cierres_caja', 'consumible_movimientos', 'obligacion_registros']) r[t] = anadir(DEMO_NOMBRE[t], copia[t]);
+  const porPadre = (filas, campo) => { const m = {}; for (const x of filas || []) (m[x[campo]] ||= []).push(x); return m; };
+  const cs = porPadre(copia.cita_servicios, 'cita_id');
+  const antes = new Set((d.citas || []).map((x) => x.id));
+  r.citas = anadir('citas', (copia.citas || []).map((c) => ({ ...c, cita_servicios: cs[c.id] || [] })));
+  r.cita_servicios = (copia.citas || []).filter((c) => !antes.has(c.id)).reduce((a, c) => a + (cs[c.id] || []).length, 0);
+  const li = porPadre(copia.cobro_lineas, 'cobro_id'), pg = porPadre(copia.cobro_pagos, 'cobro_id');
+  r.cobros = anadir('cobros', (copia.cobros || []).map((c) => ({ ...c, cobro_lineas: li[c.id] || [], cobro_pagos: pg[c.id] || [] })));
+  if (copia.negocio) for (const k of ['razon_social', 'nif', 'direccion', 'cp', 'poblacion', 'provincia', 'telefono', 'email']) if (!d.negocio[k] && copia.negocio[k]) d.negocio[k] = copia.negocio[k];
+  demo.escribir(d);
+  return r;
+}
+
+// =====================================================================
 // Facturas
 // =====================================================================
 export async function emitirFactura(cobroId, tipo, receptor = {}) {

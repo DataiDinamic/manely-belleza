@@ -6,7 +6,7 @@ import { esc, euros, abrirHoja, aviso, errorAviso, cargando, datosFormulario, co
 import { hoyISO, sumarDias, primeroDeMes, ultimoDeMes, sumarMeses, textoMes, textoDiaCorto, textoDiaLargo, desdeISO, isoDe } from '../fechas.js';
 import { confirmarConPin } from '../pin.js';
 import { pendientes, ocurrencias, proximaFecha, textoRepeticion, textoAntelacion, momentoAviso,
-  PERIODOS, periodoDe, NOMBRES_MESES, NOMBRES_DIAS } from '../avisos.js';
+  PERIODOS, periodoDe, NOMBRES_MESES, NOMBRES_DIAS, ANTELACIONES, minutosAntelacion, textoOpcionAntelacion, fechasTrimestre } from '../avisos.js';
 
 const numero = (v) => Number(String(v ?? '').replace(',', '.')) || 0;
 const coma = (v) => (v === null || v === undefined ? '' : String(v).replace('.', ','));
@@ -297,20 +297,15 @@ function formulario(o, periodoInicial, alGuardar) {
         <div class="fila-2 cuando">
           <label class="campo solo-anio"><span>Mes</span><select name="mes">${NOMBRES_MESES.map((n, i) => `<option value="${i}" ${ini.getMonth() === i ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
           <label class="campo solo-trimestre"><span>Mes del trimestre</span><select name="mesTrimestre">
-            ${['1.º (enero, abril, julio, octubre)', '2.º (febrero, mayo, agosto, noviembre)', '3.º (marzo, junio, septiembre, diciembre)'].map((t, i) => `<option value="${i}" ${(nuevo ? 0 : ini.getMonth() % 3) === i ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
+            ${['1.er mes del trimestre', '2.º mes del trimestre', '3.er mes del trimestre'].map((t, i) => `<option value="${i}" ${(nuevo ? 0 : ini.getMonth() % 3) === i ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
           <label class="campo con-dia"><span>Día del mes</span><input name="dia" type="number" min="1" max="31" inputmode="numeric" value="${diaElegido}"></label>
           <label class="campo solo-semana"><span>Día de la semana</span><select name="diaSemana">${[1, 2, 3, 4, 5, 6, 0].map((i) => `<option value="${i}" ${ini.getDay() === i ? 'selected' : ''}>${NOMBRES_DIAS[i]}</option>`).join('')}</select></label>
           <label class="campo solo-puntual"><span>Fecha</span><input type="date" name="fecha" value="${esc(o.fecha_inicio || hoyISO())}"></label>
           <label class="campo"><span>Hora</span><input type="time" name="hora" step="300" value="${esc(o.hora || '10:00')}"></label>
         </div>
+        <div class="trimestres solo-trimestre" aria-live="polite"></div>
         <div class="fila-2">
-          <div class="campo"><span>Avisar</span>
-            <div class="aviso-cuanto">
-              <label class="check-mini"><input type="checkbox" name="con_aviso" ${sinAviso ? '' : 'checked'} aria-label="Avisar"></label>
-              <input name="aviso_cantidad" type="number" min="0" max="1000" inputmode="numeric" value="${esc(sinAviso ? 3 : o.aviso_cantidad)}" aria-label="Cuánto antes">
-              <select name="aviso_unidad" aria-label="Unidad">${[['minutos', 'minutos'], ['horas', 'horas'], ['dias', 'días'], ['semanas', 'semanas']].map(([k, v]) => `<option value="${k}" ${o.aviso_unidad === k ? 'selected' : ''}>${v}</option>`).join('')}</select>
-              <span>antes</span>
-            </div></div>
+          <label class="campo"><span>Avisar</span><select name="antelacion"></select></label>
           <label class="campo"><span>Después del primer aviso</span>
             <select name="recordar">
               <option value="cada_dia" ${o.recordar !== 'no' ? 'selected' : ''}>Recordar cada día hasta marcarlo</option>
@@ -342,15 +337,40 @@ function formulario(o, periodoInicial, alGuardar) {
       periodo, repeticion: p.repeticion, cada: p.cada, fecha_inicio: primeraFecha(periodo, c),
       dia: ['anio', 'trimestre', 'mes'].includes(periodo) ? Math.min(31, Math.max(1, Math.round(numero(E.dia.value)) || 1)) : null,
       hora: E.hora.value || '10:00',
-      aviso_cantidad: E.con_aviso.checked ? Math.round(numero(E.aviso_cantidad.value)) : null, aviso_unidad: E.aviso_unidad.value,
+      aviso_cantidad: E.antelacion.value ? Number(E.antelacion.value.split('|')[0]) : null,
+      aviso_unidad: E.antelacion.value ? E.antelacion.value.split('|')[1] : (o.aviso_unidad || 'dias'),
       recordar: E.recordar.value,
     };
   };
+  // Opciones de «Avisar» según el periodo: si la elegida ya no tiene sentido, la mayor que sí lo tenga
+  let periodoOpciones = null;
+  let elegida = sinAviso ? '' : `${o.aviso_cantidad}|${o.aviso_unidad}`;
+  const opcionesAviso = () => {
+    const periodo = E.periodo.value;
+    if (periodo === periodoOpciones) return;
+    periodoOpciones = periodo;
+    const lista = ANTELACIONES[periodo] || ANTELACIONES.mes;
+    let valor = elegida;
+    if (valor && !lista.some(([c, u]) => `${c}|${u}` === valor)) {
+      const [c, u] = valor.split('|');
+      const max = minutosAntelacion(c, u);
+      const validas = lista.filter(([c2, u2]) => minutosAntelacion(c2, u2) <= max);
+      valor = validas.length ? validas.at(-1).join('|') : lista[0].join('|');
+    }
+    E.antelacion.innerHTML = `<option value="">Sin aviso</option>${lista.map(([c, u]) => `<option value="${c}|${u}" ${`${c}|${u}` === valor ? 'selected' : ''}>${textoOpcionAntelacion(c, u)}</option>`).join('')}`;
+    E.antelacion.value = valor;
+  };
+  E.antelacion.addEventListener('change', () => { elegida = E.antelacion.value; });
   const actualizar = () => {
+    opcionesAviso();
     const x = leer();
     f.dataset.periodo = x.periodo;
-    el.querySelectorAll('.aviso-cuanto > input, .aviso-cuanto > select, .aviso-cuanto > span').forEach((n) => n.classList.toggle('apagado', !E.con_aviso.checked));
-    E.recordar.disabled = !E.con_aviso.checked;
+    E.recordar.disabled = x.aviso_cantidad === null;
+    if (x.periodo === 'trimestre') {
+      const fechas = fechasTrimestre(x.dia, Number(E.mesTrimestre.value));
+      el.querySelector('.trimestres').innerHTML = ['1.er trimestre (ene–mar)', '2.º trimestre (abr–jun)', '3.er trimestre (jul–sep)', '4.º trimestre (oct–dic)']
+        .map((t, i) => `<span><small>${t}</small><b>${esc(fechas[i])}</b></span>`).join('');
+    }
     el.querySelector('.ya-hecho').hidden = !(nuevo && x.periodo === 'puntual' && x.fecha_inicio <= hoyISO());
     el.querySelector('.resumen-regla').textContent = `${textoRepeticion(x)} a las ${x.hora} · ${textoAntelacion(x.aviso_cantidad, x.aviso_unidad, x.aviso_cantidad === null ? undefined : x.recordar)}${x.periodo !== 'puntual' ? ` · la próxima: ${textoDiaLargo(x.fecha_inicio).toLowerCase()}` : ''}`;
   };

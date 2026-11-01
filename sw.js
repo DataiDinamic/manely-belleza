@@ -1,11 +1,11 @@
 // Service worker: guarda la "carcasa" de la app para que abra rápido.
 // Los datos (Supabase) nunca se guardan en caché.
 // Al publicar cambios, sube el número de VERSION.
-const VERSION = 'mb-0.6.1';
+const VERSION = 'mb-0.7.0';
 const CARCASA = [
   './', './index.html', './manifest.webmanifest', './css/app.css',
   './js/app.js', './js/config.js', './js/db.js', './js/util.js', './js/fechas.js', './js/pin.js',
-  './js/ajustes.js', './js/citas.js', './js/caja.js', './js/tpv.js', './js/factura.js', './js/ics.js', './js/importar.js', './js/avisos.js',
+  './js/ajustes.js', './js/citas.js', './js/caja.js', './js/tpv.js', './js/factura.js', './js/ics.js', './js/importar.js', './js/avisos.js', './js/copia.js',
   './js/vistas/agenda.js', './js/vistas/clientas.js', './js/vistas/servicios.js', './js/vistas/ajustes.js',
   './js/vistas/caja.js', './js/vistas/catalogo.js', './js/vistas/productos.js', './js/vistas/inventario.js', './js/vistas/secretaria.js',
   './iconos/icon-192.png', './iconos/icon-512.png', './iconos/insignia.png', './iconos/flor.png',
@@ -27,7 +27,9 @@ self.addEventListener('fetch', (e) => {
   if (url.hostname.endsWith('supabase.co') || url.hostname.endsWith('supabase.in')) return; // datos: siempre red
   if (url.origin === location.origin) {
     // Primero la red (para recibir cambios), si no hay conexión, la copia guardada
-    e.respondWith(fetch(e.request).then((r) => {
+    // cache: 'no-cache' = preguntar siempre al servidor si hay versión nueva
+    // (si no, el navegador puede seguir usando archivos viejos unos minutos)
+    e.respondWith(fetch(e.request.url, { cache: 'no-cache', credentials: 'same-origin' }).then((r) => {
       const copia = r.clone();
       if (r.ok) caches.open(VERSION).then((c) => c.put(e.request, copia));
       return r;

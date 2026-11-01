@@ -58,7 +58,25 @@ export function proximaFecha(o, desde = hoyISO()) {
   return ocurrencias(o, desde, sumarDias(desde, 3700))[0] || null;
 }
 
-const UNIDADES_AVISO = { minutos: ['minuto', 'minutos'], horas: ['hora', 'horas'], dias: ['día', 'días'], semanas: ['semana', 'semanas'] };
+const UNIDADES_AVISO = { minutos: ['minuto', 'minutos'], horas: ['hora', 'horas'], dias: ['día', 'días'], semanas: ['semana', 'semanas'], meses: ['mes', 'meses'] };
+
+// Antelaciones que tienen sentido en cada periodo (nunca tanto como el propio periodo)
+const BASE = [[0, 'minutos'], [15, 'minutos'], [30, 'minutos'], [1, 'horas'], [2, 'horas'], [1, 'dias'], [2, 'dias'], [3, 'dias']];
+const HASTA_MES = [...BASE, [5, 'dias'], [1, 'semanas'], [2, 'semanas'], [3, 'semanas']];
+export const ANTELACIONES = {
+  semana: [...BASE, [4, 'dias'], [5, 'dias'], [6, 'dias']],
+  mes: HASTA_MES,
+  trimestre: [...HASTA_MES, [1, 'meses']],
+  anio: [...HASTA_MES, [1, 'meses'], [2, 'meses'], [3, 'meses']],
+  puntual: [...HASTA_MES, [1, 'meses'], [2, 'meses'], [3, 'meses']],
+};
+const MINUTOS_UNIDAD = { minutos: 1, horas: 60, dias: 1440, semanas: 10080, meses: 43200 };
+export const minutosAntelacion = (cantidad, unidad) => Number(cantidad) * (MINUTOS_UNIDAD[unidad] || 1440);
+export function textoOpcionAntelacion(cantidad, unidad) {
+  if (Number(cantidad) === 0) return 'A la hora';
+  const [s, p] = UNIDADES_AVISO[unidad];
+  return `${cantidad} ${Number(cantidad) === 1 ? s : p} antes`;
+}
 export function textoAntelacion(cantidad, unidad, recordar) {
   if (cantidad === null || cantidad === undefined || cantidad === '') return 'sin aviso';
   const [s, p] = UNIDADES_AVISO[unidad] || UNIDADES_AVISO.dias;
@@ -83,7 +101,6 @@ export const PERIODOS = {
   trimestre: { nombre: 'Trimestre', repeticion: 'meses', cada: 3 },
   mes: { nombre: 'Mes', repeticion: 'meses', cada: 1 },
   semana: { nombre: 'Semana', repeticion: 'semanas', cada: 1 },
-  dia: { nombre: 'Día', repeticion: 'dias', cada: 1 },
   puntual: { nombre: 'Puntual', repeticion: 'una_vez', cada: 1 },
 };
 export function periodoDe(o) {
@@ -93,13 +110,18 @@ export function periodoDe(o) {
 }
 export const NOMBRES_MESES = MESES;
 export const NOMBRES_DIAS = DIAS_SEMANA;
-const TRIMESTRE_MESES = ['enero, abril, julio y octubre', 'febrero, mayo, agosto y noviembre', 'marzo, junio, septiembre y diciembre'];
+const ORDINAL_MES = ['1.er', '2.º', '3.er'];
+const MESES_CORTOS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+// Las 4 fechas del año de un aviso trimestral: el día «dia» del mes «mesDelTrimestre» (0, 1 o 2) de cada trimestre
+export function fechasTrimestre(dia, mesDelTrimestre) {
+  return [0, 3, 6, 9].map((q) => { const m = q + Number(mesDelTrimestre); return `${Math.min(dia, new Date(2026, m + 1, 0).getDate())} ${MESES_CORTOS[m]}`; });
+}
 
 export function textoRepeticion(o) {
   const [y, m, d0] = ymd(o.fecha_inicio);
   const d = o.dia || d0;
   const cada = Number(o.cada) || 1;
-  if (o.repeticion === 'meses' && cada === 3) return `Cada trimestre, el día ${d} (${TRIMESTRE_MESES[m % 3]})`;
+  if (o.repeticion === 'meses' && cada === 3) return `Cada trimestre (4 al año), el día ${d} del ${ORDINAL_MES[m % 3]} mes: ${fechasTrimestre(d, m % 3).join(', ')}`;
   switch (o.repeticion) {
     case 'una_vez': return `Una vez, el ${d} de ${MESES[m]} de ${y}`;
     case 'dias': return cada === 1 ? 'Todos los días' : `Cada ${cada} días`;
@@ -116,6 +138,7 @@ export function momentoAviso(fecha, hora, cantidad, unidad) {
   const n = Number(cantidad) || 0;
   if (unidad === 'minutos') return new Date(t.getTime() - n * 6e4);
   if (unidad === 'horas') return new Date(t.getTime() - n * 36e5);
+  if (unidad === 'meses') { t.setMonth(t.getMonth() - n); return t; }
   t.setDate(t.getDate() - n * (unidad === 'semanas' ? 7 : 1));   // días y semanas: misma hora del reloj
   return t;
 }

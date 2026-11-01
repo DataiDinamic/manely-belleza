@@ -4,6 +4,7 @@ import { esc, aviso, errorAviso, cargando, datosFormulario, confirmar } from '..
 import { leerAjustes, guardarAjustes } from '../ajustes.js';
 import { cambiarPin, fijarMinutosBloqueo, bloquearYa } from '../pin.js';
 import { elegirArchivo } from '../importar.js';
+import { descargarCopia, introducirCopia, ultimaCopia } from '../copia.js';
 import { ajustesAvisos, guardarAjustesAvisos, probar, notificacionesPosibles, pedirPermisoNotificaciones } from '../avisos.js';
 
 export async function render(el, { cuenta, alSalir }) {
@@ -88,7 +89,21 @@ export async function render(el, { cuenta, alSalir }) {
           ${db.modo === 'demo' ? '<button class="btn btn-peligro-suave" data-a="reiniciar-demo">Borrar datos de ejemplo</button>' : ''}
         </div>
       </section>
-      <p class="texto-suave version">Manely Belleza · versión alfa 0.6.1</p>
+      <section class="tarjeta copia">
+        <h2>Copia de seguridad</h2>
+        <p>Descarga en un archivo <strong>.zip</strong> todos los datos de la app: citas, clientas, servicios, productos, cobros, facturas, cierres de caja, inventario y avisos. Guárdalo en un sitio seguro (correo, Google Drive, un pendrive…). Si algún día hiciera falta, con <strong>Introducir datos</strong> se recupera todo.</p>
+        <p class="texto-suave estado-copia">${(() => {
+          const u = ultimaCopia();
+          if (!u) return 'Todavía no se ha descargado ninguna copia desde este dispositivo.';
+          const dias = Math.floor((Date.now() - new Date(u)) / 864e5);
+          return `Última copia desde este dispositivo: ${dias === 0 ? 'hoy' : dias === 1 ? 'ayer' : `hace ${dias} días`}.${dias > 30 ? ' <strong>Conviene hacer una nueva.</strong>' : ''}`;
+        })()}</p>
+        <div class="acciones-form">
+          <button type="button" class="btn btn-principal" data-a="descargar-datos">Descargar datos</button>
+          <button type="button" class="btn" data-a="introducir-datos">Introducir datos</button>
+        </div>
+      </section>
+      <p class="texto-suave version">Manely Belleza · versión alfa 0.7</p>
     </section>`;
 
   el.querySelector('[data-form="negocio"]').addEventListener('submit', async (e) => {
@@ -113,6 +128,8 @@ export async function render(el, { cuenta, alSalir }) {
   el.addEventListener('click', async (e) => {
     const a = e.target.closest('[data-a]')?.dataset.a;
     if (a === 'probar-aviso') probar();
+    if (a === 'descargar-datos') { if (await descargarCopia()) render(el, { cuenta, alSalir }); }
+    if (a === 'introducir-datos') introducirCopia();
     if (a === 'notificaciones') {
       const r = await pedirPermisoNotificaciones();
       aviso(r === 'granted' ? 'Notificaciones permitidas' : 'No se han permitido las notificaciones', r === 'granted' ? 'ok' : 'error');
