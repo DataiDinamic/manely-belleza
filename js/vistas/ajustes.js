@@ -67,7 +67,7 @@ export async function render(el, { cuenta, alSalir }) {
           ${db.modo === 'demo' ? '<button class="btn btn-peligro-suave" data-a="reiniciar-demo">Borrar datos de ejemplo</button>' : ''}
         </div>
       </section>
-      <p class="texto-suave version">Manely Belleza · versión alfa 0.4</p>
+      <p class="texto-suave version">Manely Belleza · versión alfa 0.5</p>
     </section>`;
 
   el.querySelector('[data-form="negocio"]').addEventListener('submit', async (e) => {

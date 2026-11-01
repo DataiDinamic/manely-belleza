@@ -317,6 +317,75 @@ export async function reabrirCaja(fecha) {
 }
 
 // =====================================================================
+// Inventario (material que se gasta y no se cobra)
+// =====================================================================
+const CAMPOS_CONSUMIBLE = ['nombre', 'marca', 'categoria', 'proveedor', 'unidad', 'contenido_envase', 'precio_envase', 'stock_minimo', 'notas', 'activo'];
+
+export async function listarConsumibles() {
+  let filas;
+  if (modo === 'demo') filas = demo.listar('consumibles');
+  else filas = comprobar(await sb.from('consumibles').select('*').eq('negocio_id', N).order('nombre'));
+  return filas.map((c) => ({ ...c, contenido_envase: Number(c.contenido_envase), precio_envase: Number(c.precio_envase),
+    stock_actual: Number(c.stock_actual), stock_minimo: Number(c.stock_minimo) }))
+    .sort((a, b) => (a.categoria || 'zzz').localeCompare(b.categoria || 'zzz', 'es') || a.nombre.localeCompare(b.nombre, 'es'));
+}
+
+export async function guardarConsumible(datos, stockInicial = 0) {
+  const fila = limpiar(datos, CAMPOS_CONSUMIBLE);
+  if (!fila.nombre) throw new Error('Falta el nombre');
+  fila.contenido_envase = num(fila.contenido_envase) || 1;
+  fila.precio_envase = num(fila.precio_envase) || 0;
+  fila.stock_minimo = num(fila.stock_minimo) || 0;
+  fila.unidad = fila.unidad || 'ud';
+  let guardado;
+  if (modo === 'demo') guardado = demo.guardar('consumibles', datos.id ? { ...fila, id: datos.id } : { activo: true, stock_actual: 0, ...fila });
+  else if (datos.id) guardado = comprobar(await sb.from('consumibles').update(fila).eq('id', datos.id).select().single());
+  else guardado = comprobar(await sb.from('consumibles').insert({ ...fila, negocio_id: N }).select().single());
+  const inicial = num(stockInicial) || 0;
+  if (!datos.id && inicial > 0) {
+    await registrarMovimiento({ consumible_id: guardado.id, fecha: hoyISO(), tipo: 'ajuste', cantidad: inicial, coste: 0, notas: 'Stock inicial' });
+  }
+  return guardado;
+}
+
+export async function eliminarConsumible(id) {
+  if (modo === 'demo') {
+    const d = demo.leer();
+    d.consumibles = d.consumibles.filter((x) => x.id !== id);
+    d.movimientos = d.movimientos.filter((x) => x.consumible_id !== id);
+    demo.escribir(d); return;
+  }
+  comprobar(await sb.from('consumibles').delete().eq('id', id));
+}
+
+export async function movimientosInventario({ desde, hasta, consumibleId } = {}) {
+  let filas;
+  if (modo === 'demo') {
+    filas = demo.listar('movimientos').filter((m) => (!desde || m.fecha >= desde) && (!hasta || m.fecha <= hasta)
+      && (!consumibleId || m.consumible_id === consumibleId));
+    filas.sort((a, b) => (b.fecha + b.created_at).localeCompare(a.fecha + a.created_at));
+  } else {
+    let q = sb.from('consumible_movimientos').select('*').eq('negocio_id', N);
+    if (desde) q = q.gte('fecha', desde);
+    if (hasta) q = q.lte('fecha', hasta);
+    if (consumibleId) q = q.eq('consumible_id', consumibleId);
+    filas = comprobar(await q.order('fecha', { ascending: false }).order('created_at', { ascending: false }));
+  }
+  return filas.map((m) => ({ ...m, cantidad: Number(m.cantidad), coste: m.coste === null ? null : Number(m.coste) }));
+}
+
+// mov: { consumible_id, fecha, tipo: 'compra'|'uso'|'ajuste', cantidad (+ entra / − sale), envases?, coste?, proveedor?, notas? }
+export async function registrarMovimiento(mov) {
+  if (modo === 'demo') return demo.movimiento(mov);
+  comprobar(await sb.from('consumible_movimientos').insert({ ...mov, negocio_id: N }));
+}
+
+export async function borrarMovimiento(id) {
+  if (modo === 'demo') return demo.borrarMovimiento(id);
+  comprobar(await sb.from('consumible_movimientos').delete().eq('id', id));
+}
+
+// =====================================================================
 // Facturas
 // =====================================================================
 export async function emitirFactura(cobroId, tipo, receptor = {}) {
@@ -399,6 +468,7 @@ const demo = {
         // Datos de demostración de la versión anterior: añadir lo de la caja
         if (!d.productos) { d.productos = semillaProductos(); d.cobros = []; d.cierres = []; this.escribir(d); }
         if (!d.facturas) { d.facturas = []; this.escribir(d); }
+        if (!d.consumibles) { const s = semillaInventario(); d.consumibles = s.consumibles; d.movimientos = s.movimientos; this.escribir(d); }
         return d;
       }
     } catch { /* vacío */ }
@@ -519,6 +589,25 @@ const demo = {
     this.escribir(d);
     return f.id;
   },
+  movimiento(mov) {
+    const d = this.leer();
+    const c = d.consumibles.find((x) => x.id === mov.consumible_id);
+    if (!c) throw new Error('Artículo de inventario no encontrado');
+    if ((mov.tipo === 'compra' && !(mov.cantidad > 0)) || (mov.tipo === 'uso' && !(mov.cantidad < 0))) throw new Error('Cantidad no válida');
+    const coste = mov.coste ?? (mov.tipo !== 'compra' ? Math.round(Math.abs(mov.cantidad) * c.precio_envase / c.contenido_envase * 100) / 100 : null);
+    d.movimientos.push({ id: uid(), ...mov, coste, created_at: new Date().toISOString() });
+    c.stock_actual = Math.round((Number(c.stock_actual) + Number(mov.cantidad)) * 1000) / 1000;
+    this.escribir(d);
+  },
+  borrarMovimiento(id) {
+    const d = this.leer();
+    const m = d.movimientos.find((x) => x.id === id);
+    if (!m) return;
+    const c = d.consumibles.find((x) => x.id === m.consumible_id);
+    if (c) c.stock_actual = Math.round((Number(c.stock_actual) - Number(m.cantidad)) * 1000) / 1000;
+    d.movimientos = d.movimientos.filter((x) => x.id !== id);
+    this.escribir(d);
+  },
   anularCobro(id, motivo) {
     const d = this.leer();
     const c = d.cobros.find((x) => x.id === id);
@@ -563,6 +652,31 @@ const demo = {
     return id;
   },
 };
+
+function semillaInventario() {
+  const c = (nombre, marca, categoria, proveedor, unidad, contenido_envase, precio_envase, stock_actual, stock_minimo) =>
+    ({ id: uid(), nombre, marca, categoria, proveedor, unidad, contenido_envase, precio_envase, stock_actual, stock_minimo, activo: true });
+  const consumibles = [
+    c('Acetona pura', 'Marca A', 'Quitaesmalte', 'Peluquería Andrea', 'ml', 500, 6, 380, 250),
+    c('Acetona pura', 'Marca B', 'Quitaesmalte', 'Amazon', 'ml', 1000, 9.5, 900, 250),
+    c('Algodones', 'Sansoft', 'Desechables', 'Peluquería Andrea', 'ud', 100, 2.5, 60, 50),
+    c('Servilletas de papel', '', 'Desechables', 'Mercadona', 'ud', 200, 3, 120, 100),
+    c('Guantes de nitrilo talla M', '', 'Desechables', 'Amazon', 'ud', 100, 7, 18, 40),
+    c('Toallitas sin pelusa', 'Tiendaesmaltes', 'Desechables', 'Tiendaesmaltes', 'ud', 500, 4, 300, 100),
+    c('Crema de masaje', 'Natura', 'Masaje', 'Grupo Vitalia', 'ml', 1000, 18, 650, 300),
+  ];
+  const movimientos = [];
+  const hoy = hoyISO();
+  const mov = (ci, dias, tipo, cantidad, coste = null) => {
+    const art = consumibles[ci];
+    movimientos.push({ id: uid(), consumible_id: art.id, fecha: sumarDias(hoy, -dias), tipo, cantidad, created_at: new Date(Date.now() - dias * 864e5).toISOString(),
+      coste: coste ?? Math.round(Math.abs(cantidad) * art.precio_envase / art.contenido_envase * 100) / 100, envases: tipo === 'compra' ? cantidad / art.contenido_envase : null });
+  };
+  mov(0, 40, 'compra', 500, 6); mov(0, 30, 'uso', -60); mov(0, 18, 'uso', -40); mov(0, 6, 'uso', -20);
+  mov(1, 25, 'compra', 1000, 9.5); mov(1, 10, 'uso', -60); mov(1, 3, 'uso', -40);
+  mov(2, 20, 'uso', -40); mov(4, 12, 'uso', -50); mov(6, 15, 'uso', -200); mov(6, 2, 'uso', -150);
+  return { consumibles, movimientos };
+}
 
 function semillaProductos() {
   const p = (nombre, marca, categoria, precio, stock) => ({ id: uid(), nombre, marca, categoria, precio, iva_pct: 21, stock, activo: true });
@@ -615,6 +729,7 @@ function semilla() {
     cobros: [],
     cierres: [],
     facturas: [],
+    ...semillaInventario(),
     citas: [
       cita(clientas[0], hoy, '10:00', [servicios[0], servicios[5]]),
       cita(clientas[1], hoy, '11:15', [servicios[6]]),

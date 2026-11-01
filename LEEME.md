@@ -1,4 +1,4 @@
-# Manely Belleza · app de gestión (alfa 0.4)
+# Manely Belleza · app de gestión (alfa 0.5)
 
 Agenda, clientas y servicios. Funciona en móvil, tablet y ordenador, y se instala como app desde el navegador.
 
@@ -73,6 +73,20 @@ No necesita SQL nuevo: basta con subir los archivos.
 - **Agenda por semana**: los 7 días en columnas con las horas a la izquierda. Tocar un hueco crea una cita ese día a esa hora; tocar el nombre de un día abre su vista de día. En el móvil se ven tres días y el resto se desliza.
 - **Importar de Google Calendar** (*Ajustes*): en calendar.google.com → ⚙ Configuración → Importar y exportar → Exportar (descarga un .zip). En la app se elige ese .zip (o el .ics de dentro). Se muestra la lista para revisar: la app intenta reconocer la clienta y el servicio por el título del evento; lo que no reconoce lo propone como clienta nueva (con el teléfono si aparece en la descripción). Los eventos de día completo vienen desmarcados. Las citas pasadas entran como realizadas y las futuras como confirmadas. Si se importa dos veces, lo que ya está no se duplica.
 
+## Versión 0.5: Inventario de material
+
+**Instalación:** ejecutar `supabase/004_inventario.sql` en el SQL Editor (solo añade tablas) y subir los archivos.
+
+En **Catálogo → Inventario**, el material que se gasta y no se cobra (algodones, acetona, guantes…):
+- Cada artículo: nombre, marca, categoría, proveedor, **unidad** (unidades, gramos, kilos, mililitros, litros), **contenido del envase**, **precio del envase**, **stock mínimo** y stock inicial.
+- La app calcula el **precio comparable** (€/ud, €/kg o €/l) y, si hay el mismo artículo de varias marcas, cuál sale más barata y cuánto.
+- **Usar** (con botones rápidos: ¼, ½ o 1 envase; 1, 2, 5, 10 unidades): descuenta el stock y calcula el coste de lo usado.
+- **Comprar**: suma envases y apunta lo pagado; si el precio ha cambiado, ofrece actualizarlo.
+- **Recontar**: corrige el stock tras contarlo; si falta material, cuenta como gasto (merma).
+- Arriba: **gastado este mes** (material usado), **comprado este mes**, **valor del stock** y **cuántos artículos hay que comprar**.
+- En la ficha de cada artículo: consumo medio al mes (cantidad y euros), para cuántos días queda y todos sus movimientos (se puede borrar uno mal apuntado y el stock se recalcula).
+- **Lista de la compra** con lo que está por debajo del mínimo, agrupada por proveedor, para enviar por WhatsApp o copiar.
+
 ## Límites del plan gratuito de Supabase
 
 - El proyecto **se pausa tras una semana sin uso**; con uso diario no pasa. Si se pausa, se reactiva desde el panel.
@@ -99,6 +113,7 @@ js/vistas/*.js          agenda, caja, clientas, catálogo (servicios y productos
 supabase/001_fase1.sql  tablas, reglas de seguridad y funciones (fase 1)
 supabase/002_fase2_caja.sql  productos, cobros y cierres de caja (fase 2)
 supabase/003_facturas.sql    facturas con numeración correlativa (0.3)
+supabase/004_inventario.sql  inventario de material (0.5)
 sw.js, manifest         instalación como app
 ```
 
