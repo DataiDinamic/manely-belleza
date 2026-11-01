@@ -1,4 +1,4 @@
-# Manely Belleza · app de gestión (alfa 0.3)
+# Manely Belleza · app de gestión (alfa 0.4)
 
 Agenda, clientas y servicios. Funciona en móvil, tablet y ordenador, y se instala como app desde el navegador.
 
@@ -66,6 +66,13 @@ Abre `http://localhost:8000`. Para forzar la demostración aunque haya configura
 - Un cobro con factura **no se puede anular** desde la app: hará falta una factura rectificativa (próxima versión; consultar con el gestor).
 - Estas facturas aún **no envían registros a Hacienda (Verifactu)**: será obligatorio para autónomos desde el 1 de julio de 2027 y se añadirá antes.
 
+## Versión 0.4: agenda por semana e importar de Google Calendar
+
+No necesita SQL nuevo: basta con subir los archivos.
+
+- **Agenda por semana**: los 7 días en columnas con las horas a la izquierda. Tocar un hueco crea una cita ese día a esa hora; tocar el nombre de un día abre su vista de día. En el móvil se ven tres días y el resto se desliza.
+- **Importar de Google Calendar** (*Ajustes*): en calendar.google.com → ⚙ Configuración → Importar y exportar → Exportar (descarga un .zip). En la app se elige ese .zip (o el .ics de dentro). Se muestra la lista para revisar: la app intenta reconocer la clienta y el servicio por el título del evento; lo que no reconoce lo propone como clienta nueva (con el teléfono si aparece en la descripción). Los eventos de día completo vienen desmarcados. Las citas pasadas entran como realizadas y las futuras como confirmadas. Si se importa dos veces, lo que ya está no se duplica.
+
 ## Límites del plan gratuito de Supabase
 
 - El proyecto **se pausa tras una semana sin uso**; con uso diario no pasa. Si se pausa, se reactiva desde el panel.
@@ -85,6 +92,8 @@ js/citas.js             formulario y detalle de cita
 js/caja.js              cobro (móvil), resumen Cancelar/Cobrar/Factura, detalle y anulación
 js/tpv.js               TPV de botones (tablet y ordenador)
 js/factura.js           facturas: datos, PDF, enviar y descargar
+js/ics.js               lectura de calendarios .ics (Google Calendar)
+js/importar.js          pantalla de importación de citas
 js/fechas.js            fechas en hora local (sin desfases)
 js/vistas/*.js          agenda, caja, clientas, catálogo (servicios y productos), ajustes
 supabase/001_fase1.sql  tablas, reglas de seguridad y funciones (fase 1)

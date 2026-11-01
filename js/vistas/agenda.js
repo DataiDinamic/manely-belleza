@@ -1,4 +1,4 @@
-// Agenda: vista de día (con la semana arriba) y vista de mes
+// Agenda: vista de día (con la semana arriba), de semana y de mes
 import * as db from '../db.js';
 import { esc, euros, nombreCompleto, errorAviso } from '../util.js';
 import { hoyISO, sumarDias, sumarMeses, lunesDe, primeroDeMes, desdeISO, aMinutos, aHora,
@@ -6,7 +6,18 @@ import { hoyISO, sumarDias, sumarMeses, lunesDe, primeroDeMes, desdeISO, aMinuto
 import { leerAjustes } from '../ajustes.js';
 import { abrirFormularioCita, abrirDetalleCita, ESTADOS, textoServicios } from '../citas.js';
 
-const PPM = 1.6; // píxeles por minuto en la vista de día
+const PPM = 1.6;    // píxeles por minuto en la vista de día
+const PPM_S = 1.2;  // en la vista de semana (columnas más bajas para ver más horas)
+const NOMBRE_VISTA = { dia: 'día', semana: 'semana', mes: 'mes' };
+
+function tituloSemana(fecha) {
+  const l = lunesDe(fecha), d = sumarDias(l, 6);
+  const fl = desdeISO(l), fd = desdeISO(d);
+  const mes = (f) => new Intl.DateTimeFormat('es-ES', { month: 'short' }).format(f).replace('.', '');
+  return fl.getMonth() === fd.getMonth()
+    ? `${fl.getDate()} – ${fd.getDate()} ${mes(fd)} ${fd.getFullYear()}`
+    : `${fl.getDate()} ${mes(fl)} – ${fd.getDate()} ${mes(fd)} ${fd.getFullYear()}`;
+}
 const CLAVE = 'mb_agenda_estado';
 let st = (() => {
   try { return { fecha: hoyISO(), vista: 'dia', anuladas: false, ...JSON.parse(sessionStorage.getItem(CLAVE) || '{}') }; }
@@ -25,13 +36,14 @@ export async function render(el) {
     <section class="agenda" aria-labelledby="tituloAgenda">
       <header class="barra">
         <div class="barra-nav">
-          <button class="btn-icono" data-ir="-1" aria-label="${st.vista === 'dia' ? 'Día anterior' : 'Mes anterior'}">‹</button>
+          <button class="btn-icono" data-ir="-1" aria-label="${NOMBRE_VISTA[st.vista] === 'semana' ? 'Semana anterior' : (st.vista === 'dia' ? 'Día anterior' : 'Mes anterior')}">‹</button>
           <button class="btn btn-mini" data-ir="hoy">Hoy</button>
-          <button class="btn-icono" data-ir="1" aria-label="${st.vista === 'dia' ? 'Día siguiente' : 'Mes siguiente'}">›</button>
+          <button class="btn-icono" data-ir="1" aria-label="${NOMBRE_VISTA[st.vista] === 'semana' ? 'Semana siguiente' : (st.vista === 'dia' ? 'Día siguiente' : 'Mes siguiente')}">›</button>
         </div>
-        <h1 id="tituloAgenda" class="barra-titulo">${st.vista === 'dia' ? esc(textoDiaLargo(st.fecha)) : esc(textoMes(st.fecha))}</h1>
+        <h1 id="tituloAgenda" class="barra-titulo">${st.vista === 'dia' ? esc(textoDiaLargo(st.fecha)) : st.vista === 'semana' ? esc(tituloSemana(st.fecha)) : esc(textoMes(st.fecha))}</h1>
         <div class="segmentos" role="group" aria-label="Vista">
           <button data-vista="dia" aria-pressed="${st.vista === 'dia'}">Día</button>
+          <button data-vista="semana" aria-pressed="${st.vista === 'semana'}">Semana</button>
           <button data-vista="mes" aria-pressed="${st.vista === 'mes'}">Mes</button>
         </div>
         <button class="btn btn-principal" data-nueva>Nueva cita</button>
@@ -44,7 +56,9 @@ export async function render(el) {
     const v = e.target.closest('[data-vista]')?.dataset.vista;
     if (ir) {
       if (ir === 'hoy') st.fecha = hoyISO();
-      else st.fecha = st.vista === 'dia' ? sumarDias(st.fecha, Number(ir)) : sumarMeses(st.fecha, Number(ir));
+      else if (st.vista === 'dia') st.fecha = sumarDias(st.fecha, Number(ir));
+      else if (st.vista === 'semana') st.fecha = sumarDias(st.fecha, 7 * Number(ir));
+      else st.fecha = sumarMeses(st.fecha, Number(ir));
       guardarEstado(); render(el);
     } else if (v && v !== st.vista) {
       st.vista = v; guardarEstado(); render(el);
@@ -55,6 +69,7 @@ export async function render(el) {
 
   try {
     if (st.vista === 'dia') await pintarDia(el.querySelector('.agenda-cuerpo'));
+    else if (st.vista === 'semana') await pintarSemana(el.querySelector('.agenda-cuerpo'));
     else await pintarMes(el.querySelector('.agenda-cuerpo'));
   } catch (e) {
     el.querySelector('.agenda-cuerpo').innerHTML = `<div class="vacio"><p>No se pudo cargar la agenda.</p>
@@ -79,6 +94,120 @@ function horaSugerida() {
   return aHora(Math.max(m, aMinutos(apertura)));
 }
 
+// Reparte en columnas las citas que se pisan (marca _col y _cols)
+function enCarriles(citas) {
+  const ordenadas = [...citas].sort((a, b) => a.inicio - b.inicio || b.fin - a.fin);
+  const grupos = [];
+  for (const c of ordenadas) {
+    const g = grupos.at(-1);
+    if (g && c.inicio < g.fin) { g.citas.push(c); g.fin = Math.max(g.fin, c.fin); }
+    else grupos.push({ fin: c.fin, citas: [c] });
+  }
+  const bloques = [];
+  for (const g of grupos) {
+    const columnas = [];
+    for (const c of g.citas) {
+      let col = columnas.findIndex((finCol) => finCol <= c.inicio);
+      if (col === -1) { col = columnas.length; columnas.push(0); }
+      columnas[col] = c.fin;
+      c._col = col;
+    }
+    for (const c of g.citas) c._cols = columnas.length;
+    bloques.push(...g.citas);
+  }
+  return bloques;
+}
+
+function htmlBloque(c, ini, ppm, { semana = false } = {}) {
+  const alturaPx = Math.max(c.duracion_min * ppm, semana ? 22 : 26);
+  const compacto = alturaPx < (semana ? 44 : 56);
+  return `<button class="cita-bloque estado-${c.estado} ${compacto ? 'compacto' : ''} ${c.cobrada ? 'cobrada' : ''}" data-cita="${c.id}"
+    style="--esmalte:${esc(c.clienta?.color || '#B5838D')};top:${(c.inicio - ini) * ppm}px;height:${alturaPx}px;
+           left:calc(${(c._col / c._cols) * 100}% + 2px);width:calc(${100 / c._cols}% - 4px)"
+    aria-label="${c.hora} ${esc(nombreCompleto(c.clienta))}, ${esc(textoServicios(c))}, ${ESTADOS[c.estado]}">
+    <span class="cb-hora">${c.hora}</span>
+    <span class="cb-nombre">${esc(semana ? (c.clienta?.nombre || '') : nombreCompleto(c.clienta))}</span>
+    ${compacto ? '' : `<span class="cb-servicios">${esc(textoServicios(c))}</span>`}
+  </button>`;
+}
+
+function rangoHorario(citas) {
+  const aj = leerAjustes();
+  let ini = aMinutos(aj.apertura), fin = aMinutos(aj.cierre);
+  for (const c of citas) { ini = Math.min(ini, Math.floor(c.inicio / 60) * 60); fin = Math.max(fin, Math.ceil(c.fin / 60) * 60); }
+  return { ini, fin };
+}
+
+// ---------------------------------------------------------------------
+// Vista de semana
+// ---------------------------------------------------------------------
+async function pintarSemana(zona) {
+  const lunes = lunesDe(st.fecha);
+  const citas = await db.citasEntre(lunes, sumarDias(lunes, 6));
+  const visibles = citas.filter((c) => st.anuladas || c.estado !== 'anulada');
+  const hoy = hoyISO();
+  const dias = Array.from({ length: 7 }, (_, i) => sumarDias(lunes, i));
+  const { ini, fin } = rangoHorario(visibles);
+  const alto = (fin - ini) * PPM_S;
+  const anuladas = citas.filter((c) => c.estado === 'anulada').length;
+  const previsto = citas.filter(cuenta).reduce((a, c) => a + c.total, 0);
+
+  const etiquetas = [];
+  for (let m = ini; m < fin; m += 60) etiquetas.push(`<span style="top:${(m - ini) * PPM_S}px">${aHora(m)}</span>`);
+
+  zona.innerHTML = `
+    <div class="semana-info">
+      <p class="texto-suave">${citas.filter(cuenta).length} citas · previsto <strong>${euros(previsto)}</strong></p>
+      ${anuladas ? `<label class="check"><input type="checkbox" data-anuladas ${st.anuladas ? 'checked' : ''}> Ver anuladas (${anuladas})</label>` : ''}
+    </div>
+    <div class="semana-scroll">
+      <div class="semana" style="--ppm-hora:${60 * PPM_S}px">
+        <div class="sem-esquina"></div>
+        ${dias.map((d) => {
+          const n = citas.filter((c) => c.fecha === d && cuenta(c)).length;
+          return `<button class="sem-cab ${d === hoy ? 'hoy' : ''} ${d === st.fecha ? 'elegido' : ''}" data-dia="${d}" aria-label="Abrir ${esc(textoDiaLargo(d))}">
+            <span>${inicialDia(d)}</span><b>${desdeISO(d).getDate()}</b><small>${n ? `${n} ${n === 1 ? 'cita' : 'citas'}` : ''}</small></button>`;
+        }).join('')}
+        <div class="sem-horas" style="height:${alto}px">${etiquetas.join('')}</div>
+        ${dias.map((d) => `
+          <div class="sem-col ${d === hoy ? 'hoy' : ''}" style="height:${alto}px">
+            <div class="carril" data-fecha="${d}" title="Toca un hueco para crear una cita">
+              ${enCarriles(visibles.filter((c) => c.fecha === d)).map((c) => htmlBloque(c, ini, PPM_S, { semana: true })).join('')}
+            </div>
+            ${d === hoy ? '<div class="ahora" aria-hidden="true"></div>' : ''}
+          </div>`).join('')}
+      </div>
+    </div>`;
+
+  zona.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-cita]');
+    if (b) return abrirDetalleCita(b.dataset.cita, refrescar);
+    const cab = e.target.closest('[data-dia]');
+    if (cab) { st.fecha = cab.dataset.dia; st.vista = 'dia'; guardarEstado(); return render(contenedor); }
+    if (e.target.classList.contains('carril')) {
+      const m = Math.floor((ini + e.offsetY / PPM_S) / 15) * 15;
+      abrirFormularioCita({ fecha: e.target.dataset.fecha, hora: aHora(m), alGuardar: alGuardarCita });
+    }
+  });
+  zona.querySelector('[data-anuladas]')?.addEventListener('change', (e) => {
+    st.anuladas = e.target.checked; guardarEstado(); render(contenedor);
+  });
+
+  const scroll = zona.querySelector('.semana-scroll');
+  const linea = zona.querySelector('.ahora');
+  const colocarLinea = () => {
+    if (!linea) return;
+    const m = minutosAhora();
+    linea.style.display = m >= ini && m <= fin ? '' : 'none';
+    linea.style.top = `${(m - ini) * PPM_S}px`;
+  };
+  colocarLinea();
+  if (linea) relojLinea = setInterval(colocarLinea, 60000);
+  const primera = Math.min(...visibles.map((c) => c.inicio), Infinity);
+  const objetivo = dias.includes(hoy) ? minutosAhora() - 60 : (Number.isFinite(primera) ? primera - 30 : ini);
+  scroll.scrollTop = Math.max(0, (objetivo - ini) * PPM_S);
+}
+
 // ---------------------------------------------------------------------
 // Vista de día
 // ---------------------------------------------------------------------
@@ -100,9 +229,7 @@ async function pintarDia(zona) {
   }).join('');
 
   // Rango horario (se amplía si hay citas fuera del horario)
-  const aj = leerAjustes();
-  let ini = aMinutos(aj.apertura), fin = aMinutos(aj.cierre);
-  for (const c of visibles) { ini = Math.min(ini, Math.floor(c.inicio / 60) * 60); fin = Math.max(fin, Math.ceil(c.fin / 60) * 60); }
+  const { ini, fin } = rangoHorario(visibles);
   const alto = (fin - ini) * PPM;
 
   const horas = [];
@@ -111,39 +238,7 @@ async function pintarDia(zona) {
       ${m % 60 ? '' : `<span>${aHora(m)}</span>`}</div>`);
   }
 
-  // Columnas para citas que se pisan
-  const ordenadas = [...visibles].sort((a, b) => a.inicio - b.inicio || b.fin - a.fin);
-  const grupos = [];
-  for (const c of ordenadas) {
-    const g = grupos.at(-1);
-    if (g && c.inicio < g.fin) { g.citas.push(c); g.fin = Math.max(g.fin, c.fin); }
-    else grupos.push({ fin: c.fin, citas: [c] });
-  }
-  const bloques = [];
-  for (const g of grupos) {
-    const columnas = [];
-    for (const c of g.citas) {
-      let col = columnas.findIndex((finCol) => finCol <= c.inicio);
-      if (col === -1) { col = columnas.length; columnas.push(0); }
-      columnas[col] = c.fin;
-      c._col = col;
-    }
-    for (const c of g.citas) c._cols = columnas.length;
-    bloques.push(...g.citas);
-  }
-
-  const htmlBloques = bloques.map((c) => {
-    const alturaPx = Math.max(c.duracion_min * PPM, 26);
-    const compacto = alturaPx < 56;
-    return `<button class="cita-bloque estado-${c.estado} ${compacto ? 'compacto' : ''} ${c.cobrada ? 'cobrada' : ''}" data-cita="${c.id}"
-      style="--esmalte:${esc(c.clienta?.color || '#B5838D')};top:${(c.inicio - ini) * PPM}px;height:${alturaPx}px;
-             left:calc(${(c._col / c._cols) * 100}% + 2px);width:calc(${100 / c._cols}% - 4px)"
-      aria-label="${c.hora} ${esc(nombreCompleto(c.clienta))}, ${esc(textoServicios(c))}, ${ESTADOS[c.estado]}">
-      <span class="cb-hora">${c.hora}</span>
-      <span class="cb-nombre">${esc(nombreCompleto(c.clienta))}</span>
-      ${compacto ? '' : `<span class="cb-servicios">${esc(textoServicios(c))}</span>`}
-    </button>`;
-  }).join('');
+  const htmlBloques = enCarriles(visibles).map((c) => htmlBloque(c, ini, PPM)).join('');
 
   const conteo = delDia.filter(cuenta);
   const previsto = conteo.reduce((a, c) => a + c.total, 0);

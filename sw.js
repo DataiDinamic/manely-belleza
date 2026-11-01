@@ -1,11 +1,11 @@
 // Service worker: guarda la "carcasa" de la app para que abra rápido.
 // Los datos (Supabase) nunca se guardan en caché.
 // Al publicar cambios, sube el número de VERSION.
-const VERSION = 'mb-0.3.0';
+const VERSION = 'mb-0.4.0';
 const CARCASA = [
   './', './index.html', './manifest.webmanifest', './css/app.css',
   './js/app.js', './js/config.js', './js/db.js', './js/util.js', './js/fechas.js', './js/pin.js',
-  './js/ajustes.js', './js/citas.js', './js/caja.js', './js/tpv.js', './js/factura.js',
+  './js/ajustes.js', './js/citas.js', './js/caja.js', './js/tpv.js', './js/factura.js', './js/ics.js', './js/importar.js',
   './js/vistas/agenda.js', './js/vistas/clientas.js', './js/vistas/servicios.js', './js/vistas/ajustes.js',
   './js/vistas/caja.js', './js/vistas/catalogo.js', './js/vistas/productos.js',
   './iconos/icon-192.png', './iconos/icon-512.png', './iconos/insignia.png', './iconos/flor.png',

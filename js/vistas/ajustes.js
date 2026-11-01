@@ -3,6 +3,7 @@ import * as db from '../db.js';
 import { esc, aviso, errorAviso, cargando, datosFormulario, confirmar } from '../util.js';
 import { leerAjustes, guardarAjustes } from '../ajustes.js';
 import { cambiarPin, fijarMinutosBloqueo, bloquearYa } from '../pin.js';
+import { elegirArchivo } from '../importar.js';
 
 export async function render(el, { cuenta, alSalir }) {
   const n = db.negocioActual() || {};
@@ -48,6 +49,17 @@ export async function render(el, { cuenta, alSalir }) {
       </form>
 
       <section class="tarjeta">
+        <h2>Pasar citas desde Google Calendar</h2>
+        <ol class="pasos-importar">
+          <li>En el ordenador, entra en <strong>calendar.google.com</strong> con la cuenta de la agenda.</li>
+          <li>Rueda dentada ⚙ → <strong>Configuración</strong> → <strong>Importar y exportar</strong> → <strong>Exportar</strong>. Se descarga un archivo <strong>.zip</strong>.</li>
+          <li>Pulsa aquí abajo y elige ese archivo (vale el .zip tal cual o el .ics de dentro).</li>
+        </ol>
+        <p class="texto-suave">Antes de importar verás la lista para revisar la clienta y el servicio de cada cita. No se duplica lo que ya esté en la agenda.</p>
+        <div class="acciones-form"><button type="button" class="btn btn-principal" data-a="importar">Elegir archivo de Google Calendar</button></div>
+      </section>
+
+      <section class="tarjeta">
         <h2>Cuenta</h2>
         <p>${db.modo === 'demo' ? 'Modo demostración: los datos son de ejemplo y se guardan solo en este navegador.' : `Has entrado como <strong>${esc(cuenta)}</strong>.`}</p>
         <div class="acciones-form">
@@ -55,7 +67,7 @@ export async function render(el, { cuenta, alSalir }) {
           ${db.modo === 'demo' ? '<button class="btn btn-peligro-suave" data-a="reiniciar-demo">Borrar datos de ejemplo</button>' : ''}
         </div>
       </section>
-      <p class="texto-suave version">Manely Belleza · versión alfa 0.3</p>
+      <p class="texto-suave version">Manely Belleza · versión alfa 0.4</p>
     </section>`;
 
   el.querySelector('[data-form="negocio"]').addEventListener('submit', async (e) => {
@@ -74,6 +86,7 @@ export async function render(el, { cuenta, alSalir }) {
   el.addEventListener('click', async (e) => {
     const a = e.target.closest('[data-a]')?.dataset.a;
     if (a === 'pin') { await cambiarPin(cuenta); aviso('PIN cambiado'); }
+    if (a === 'importar') elegirArchivo();
     if (a === 'bloquear') bloquearYa();
     if (a === 'salir' && await confirmar('¿Cerrar sesión?', { detalle: 'Para volver a entrar necesitarás el email y la contraseña.', si: 'Cerrar sesión' })) alSalir();
     if (a === 'reiniciar-demo' && await confirmar('¿Borrar los datos de ejemplo?', { detalle: 'Se volverán a crear los datos de ejemplo iniciales.', si: 'Borrar', peligro: true })) {
