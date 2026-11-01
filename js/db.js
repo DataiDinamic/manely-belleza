@@ -609,6 +609,13 @@ export async function guardarCita(cita, servicios) {
   return comprobar(await sb.rpc('guardar_cita', { p_negocio: N, p_cita: cita, p_servicios: servicios }));
 }
 
+// Mover una cita a otro día u hora (sin tocar sus servicios)
+export async function moverCita(id, fecha, hora) {
+  const cambios = { fecha, hora_inicio: `${hora}:00` };
+  if (modo === 'demo') return demo.actualizar('citas', id, cambios);
+  comprobar(await sb.from('citas').update(cambios).eq('id', id));
+}
+
 export async function cambiarAvisoCita(id, avisoMin) {
   const cambios = { aviso_min: avisoMin === '' || avisoMin === null || avisoMin === undefined ? null : Number(avisoMin) };
   if (modo === 'demo') return demo.actualizar('citas', id, cambios);

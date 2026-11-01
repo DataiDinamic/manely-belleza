@@ -1,6 +1,6 @@
 // Agenda: vista de día (con la semana arriba), de semana y de mes
 import * as db from '../db.js';
-import { esc, euros, nombreCompleto, errorAviso } from '../util.js';
+import { esc, euros, nombreCompleto, errorAviso, aviso, confirmar, cargando } from '../util.js';
 import { hoyISO, sumarDias, sumarMeses, lunesDe, primeroDeMes, desdeISO, aMinutos, aHora,
   textoDiaLargo, textoMes, inicialDia, minutosAhora } from '../fechas.js';
 import { leerAjustes } from '../ajustes.js';
@@ -68,9 +68,11 @@ export async function render(el) {
   });
 
   try {
-    if (st.vista === 'dia') await pintarDia(el.querySelector('.agenda-cuerpo'));
-    else if (st.vista === 'semana') await pintarSemana(el.querySelector('.agenda-cuerpo'));
+    let info = null;
+    if (st.vista === 'dia') info = await pintarDia(el.querySelector('.agenda-cuerpo'));
+    else if (st.vista === 'semana') info = await pintarSemana(el.querySelector('.agenda-cuerpo'));
     else await pintarMes(el.querySelector('.agenda-cuerpo'));
+    if (pendienteMover && info) { const id = pendienteMover; pendienteMover = null; modoMover(el, id, info); }
   } catch (e) {
     el.querySelector('.agenda-cuerpo').innerHTML = `<div class="vacio"><p>No se pudo cargar la agenda.</p>
       <button class="btn" onclick="location.reload()">Reintentar</button></div>`;
@@ -206,6 +208,7 @@ async function pintarSemana(zona) {
   const primera = Math.min(...visibles.map((c) => c.inicio), Infinity);
   const objetivo = dias.includes(hoy) ? minutosAhora() - 60 : (Number.isFinite(primera) ? primera - 30 : ini);
   scroll.scrollTop = Math.max(0, (objetivo - ini) * PPM_S);
+  return { ini, fin, ppm: PPM_S, citas, scroll };
 }
 
 // ---------------------------------------------------------------------
@@ -299,6 +302,7 @@ async function pintarDia(zona) {
   if (linea) relojLinea = setInterval(colocarLinea, 60000);
   const objetivo = st.fecha === hoy ? minutosAhora() - 45 : (visibles[0]?.inicio ?? ini) - 15;
   scroll.scrollTop = Math.max(0, (objetivo - ini) * PPM);
+  return { ini, fin, ppm: PPM, citas: delDia, scroll };
 }
 
 // ---------------------------------------------------------------------
@@ -333,3 +337,183 @@ async function pintarMes(zona) {
 }
 
 export function irAFecha(fecha) { st.fecha = fecha; st.vista = 'dia'; guardarEstado(); }
+
+// ---------------------------------------------------------------------
+// Mover una cita arrastrándola con el dedo (desde «Mover cita» en su ficha)
+// Todo queda oscurecido menos la cita; se arrastra a su nuevo hueco y al
+// soltarla queda guardada. La ✕ roja cancela.
+// ---------------------------------------------------------------------
+let pendienteMover = null;
+window.addEventListener('mb:mover-cita', (e) => {
+  const { id, fecha } = e.detail;
+  pendienteMover = id;
+  st.fecha = fecha;
+  if (st.vista === 'mes') st.vista = 'dia';
+  guardarEstado();
+  if (location.hash.startsWith('#agenda') && contenedor?.isConnected) render(contenedor);
+  else if (!location.hash || location.hash === '#') window.dispatchEvent(new HashChangeEvent('hashchange'));
+  else location.hash = '#agenda';
+});
+
+const PASO = 5;   // minutos: la cita se coloca de 5 en 5
+const DIA_CORTO = (iso) => `${inicialDia(iso)} ${desdeISO(iso).getDate()}`;
+
+function modoMover(el, id, { ini, ppm, citas, scroll }) {
+  const c = citas.find((x) => x.id === id);
+  const bloque = el.querySelector(`.cita-bloque[data-cita="${id}"]`);
+  if (!c || !bloque) return aviso('No se encuentra la cita en la agenda.', 'error');
+  const semana = st.vista === 'semana';
+  // Que la cita se vea
+  scroll.scrollIntoView({ block: 'nearest' });
+  bloque.scrollIntoView({ block: 'center', inline: 'center' });
+
+  document.body.classList.add('moviendo-cita');
+  const velo = document.createElement('div');
+  velo.className = 'velo-mover';
+  velo.innerHTML = `<p class="mover-ayuda">Arrastra la cita a su nueva hora${semana ? ' o a otro día' : '. Para cambiar de día, suéltala sobre un día de arriba'}.</p>`;
+  const cancelar = document.createElement('button');
+  cancelar.className = 'mover-cancelar';
+  cancelar.type = 'button';
+  cancelar.setAttribute('aria-label', 'Cancelar el movimiento');
+  cancelar.textContent = '✕';
+  const fantasma = bloque.cloneNode(true);
+  fantasma.removeAttribute('data-cita');
+  fantasma.classList.add('fantasma');
+  fantasma.setAttribute('aria-label', `Arrastrar la cita de ${nombreCompleto(c.clienta)}`);
+  fantasma.insertAdjacentHTML('beforeend', '<span class="fantasma-hora"></span>');
+  const etiqueta = fantasma.querySelector('.fantasma-hora');
+  bloque.classList.add('origen-mover');
+  document.body.append(velo, fantasma, cancelar);
+
+  const color = c.clienta?.color || '#B5838D';
+  const colocarEn = (left, top, ancho, alto) => {
+    fantasma.style.cssText = `--esmalte:${color};position:fixed;left:${left}px;top:${top}px;width:${ancho}px;height:${alto}px;margin:0`;
+  };
+  const volver = () => {
+    const r = bloque.getBoundingClientRect();
+    colocarEn(r.left, r.top, r.width, r.height);
+    etiqueta.textContent = '';
+    marcarDestino(null);
+  };
+  let arr = null;        // arrastre en curso: { dx, dy, x, y }
+  let destino = null;    // { fecha, inicio }
+  let pan = null;        // desplazar la agenda tocando fuera de la cita
+  let animacion = null;
+  let resaltado = null;
+  volver();
+
+  function marcarDestino(elDestino) {
+    if (resaltado && resaltado !== elDestino) resaltado.classList.remove('destino-mover');
+    resaltado = elDestino;
+    resaltado?.classList.add('destino-mover');
+  }
+
+  function calcular(x, y) {
+    const top = y - arr.dy;
+    const pila = document.elementsFromPoint(x, y);
+    const tira = pila.find((n) => n.matches?.('.dia-tira[data-dia], .sem-cab[data-dia]'));
+    if (tira) return { fecha: tira.dataset.dia, inicio: c.inicio, sobre: tira };
+    const carril = pila.find((n) => n.classList?.contains('carril'));
+    if (!carril) return null;
+    const r = carril.getBoundingClientRect();
+    let inicio = Math.round((ini + (top - r.top) / ppm) / PASO) * PASO;
+    inicio = Math.max(0, Math.min(inicio, 24 * 60 - c.duracion_min));
+    return { fecha: carril.dataset.fecha || st.fecha, inicio, sobre: semana ? carril.parentElement : null };
+  }
+
+  function mover(x, y) {
+    arr.x = x; arr.y = y;
+    const r = fantasma.getBoundingClientRect();
+    colocarEn(x - arr.dx, y - arr.dy, r.width, r.height);
+    destino = calcular(x, y);
+    marcarDestino(destino?.sobre || null);
+    const horaFantasma = fantasma.querySelector('.cb-hora');
+    if (horaFantasma) horaFantasma.textContent = destino ? aHora(destino.inicio) : c.hora;
+    etiqueta.textContent = destino ? `${destino.fecha !== c.fecha ? `${DIA_CORTO(destino.fecha)} · ` : ''}${aHora(destino.inicio)}–${aHora(destino.inicio + c.duracion_min)}` : '';
+  }
+
+  // Si el dedo llega al borde, la agenda se desplaza sola
+  function autoDesplazar() {
+    if (!arr) return;
+    const r = scroll.getBoundingClientRect();
+    const margen = 48, vel = 10;
+    let dy = 0, dx = 0;
+    if (arr.y < r.top + margen) dy = -vel; else if (arr.y > r.bottom - margen) dy = vel;
+    if (semana) { if (arr.x < r.left + margen + 50) dx = -vel; else if (arr.x > r.right - margen) dx = vel; }
+    if (dy || dx) { scroll.scrollTop += dy; scroll.scrollLeft += dx; mover(arr.x, arr.y); }
+    animacion = requestAnimationFrame(autoDesplazar);
+  }
+
+  fantasma.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    fantasma.setPointerCapture(e.pointerId);
+    const r = fantasma.getBoundingClientRect();
+    arr = { dx: e.clientX - r.left, dy: e.clientY - r.top, x: e.clientX, y: e.clientY };
+    fantasma.classList.add('arrastrando');
+    animacion = requestAnimationFrame(autoDesplazar);
+  });
+  fantasma.addEventListener('pointermove', (e) => { if (arr) mover(e.clientX, e.clientY); });
+  fantasma.addEventListener('pointercancel', () => { arr = null; cancelAnimationFrame(animacion); fantasma.classList.remove('arrastrando'); volver(); });
+  fantasma.addEventListener('pointerup', async (e) => {
+    if (!arr) return;
+    mover(e.clientX, e.clientY);
+    arr = null;
+    cancelAnimationFrame(animacion);
+    fantasma.classList.remove('arrastrando');
+    const d = destino;
+    if (!d || (d.fecha === c.fecha && d.inicio === c.inicio)) return volver();
+    const hora = aHora(d.inicio);
+    try {
+      const pisa = await db.solapes(d.fecha, d.inicio, d.inicio + c.duracion_min, c.id);
+      if (pisa.length) {
+        const ok = await confirmar('Ahí ya hay otra cita', {
+          detalle: `Coincide con: ${pisa.map((x) => `${x.hora} ${nombreCompleto(x.clienta)}`).join(', ')}. ¿Moverla igualmente?`,
+          si: 'Mover igualmente', no: 'Elegir otro hueco',
+        });
+        if (!ok) return volver();
+      }
+      cargando(true);
+      await db.moverCita(c.id, d.fecha, hora);
+      aviso(`Cita movida al ${textoDiaLargo(d.fecha).toLowerCase()} a las ${hora}`);
+      salir();
+      window.dispatchEvent(new Event('mb:datos'));
+      st.fecha = d.fecha; guardarEstado();
+      render(contenedor);
+    } catch (err) { errorAviso(err, 'No se pudo mover la cita'); volver(); }
+    finally { cargando(false); }
+  });
+
+  // Tocar fuera de la cita desplaza la agenda (para buscar el hueco)
+  velo.addEventListener('pointerdown', (e) => {
+    pan = { x: e.clientX, y: e.clientY, top: scroll.scrollTop, left: scroll.scrollLeft };
+    velo.setPointerCapture(e.pointerId);
+  });
+  velo.addEventListener('pointermove', (e) => {
+    if (!pan) return;
+    scroll.scrollTop = pan.top - (e.clientY - pan.y);
+    scroll.scrollLeft = pan.left - (e.clientX - pan.x);
+  });
+  velo.addEventListener('pointerup', () => { pan = null; });
+  velo.addEventListener('wheel', (e) => { scroll.scrollTop += e.deltaY; scroll.scrollLeft += e.deltaX; e.preventDefault(); }, { passive: false });
+  const alDesplazar = () => { if (!arr) volver(); };
+  scroll.addEventListener('scroll', alDesplazar);
+  window.addEventListener('scroll', alDesplazar);
+  window.addEventListener('resize', alDesplazar);
+  const tecla = (e) => { if (e.key === 'Escape') salir(); };
+  document.addEventListener('keydown', tecla);
+
+  function salir() {
+    cancelAnimationFrame(animacion);
+    marcarDestino(null);
+    velo.remove(); fantasma.remove(); cancelar.remove();
+    bloque.classList.remove('origen-mover');
+    document.body.classList.remove('moviendo-cita');
+    scroll.removeEventListener('scroll', alDesplazar);
+    window.removeEventListener('scroll', alDesplazar);
+    window.removeEventListener('resize', alDesplazar);
+    window.removeEventListener('hashchange', salir);
+    document.removeEventListener('keydown', tecla);
+  }
+  cancelar.addEventListener('click', () => { salir(); aviso('Movimiento cancelado'); });
+  window.addEventListener('hashchange', salir);
+}

@@ -1,4 +1,4 @@
-# Manely Belleza · app de gestión (alfa 0.7)
+# Manely Belleza · app de gestión (alfa 0.8)
 
 Agenda, clientas y servicios. Funciona en móvil, tablet y ordenador, y se instala como app desde el navegador.
 
@@ -110,6 +110,17 @@ Sección **Avisos** (campanita en el menú), para lo que no tiene que ver con la
 En **Ajustes → Copia de seguridad**:
 - **Descargar datos**: descarga `Manely-copia-AAAA-MM-DD.zip` con todo (citas, clientas, servicios, productos, cobros, facturas, cierres de caja, inventario y avisos) en formato JSON: `datos.json` con todo junto y `tablas/` con cada tabla por separado. Conviene guardarlo fuera de la tablet (correo, Google Drive, pendrive) y hacer una copia al menos una vez al mes; la app indica cuándo se hizo la última desde ese dispositivo.
 - **Introducir datos**: se elige ese .zip (sin descomprimir), se ve lo que contiene y, tras el PIN, se añade a la app **todo lo que falte**. Lo que ya está no se cambia ni se duplica, así que repetirlo no hace daño. Funciona también en un proyecto de Supabase nuevo y vacío (por ejemplo, si hubiera que empezar de cero): se ejecutan los SQL 001 a 006, se entra y se introducen los datos.
+
+## Versión 0.7.1: mensaje de WhatsApp
+
+No necesita SQL. En la ficha de una cita, el botón **WhatsApp** abre un mensaje ya preparado con los tratamientos, el día y la hora («¡Buenas! Te confirmo la cita para…»), que se puede cambiar antes de enviarlo. **Abrir WhatsApp** abre el chat de la clienta con el mensaje escrito: solo queda pulsar enviar en WhatsApp. Si la cita estaba pendiente, se marca como confirmada (se puede desmarcar). Con **Cambiar el mensaje predefinido** se edita el mensaje base usando [nombre], [tratamientos], [día] y [hora]; se guarda en ese dispositivo.
+
+## Versión 0.8: mover citas con el dedo, duración en horas y enviar la copia
+
+No necesita SQL.
+- **Mover cita**: botón en la ficha de la cita. La agenda se oscurece salvo la cita, que se arrastra con el dedo a su nueva hora (en la vista de semana, también a otro día; en la de día, soltándola sobre un día de la tira de arriba). Una etiqueta indica la hora de destino. Al soltarla queda guardada; si coincide con otra cita, pregunta antes. Tocando fuera de la cita se desplaza la agenda; si se arrastra hasta el borde, se desplaza sola. La ✕ roja cancela.
+- **Duración en horas y minutos** al crear o editar una cita y en los servicios del Catálogo (p. ej. 1 h 30 min).
+- **Copia de seguridad**: además de Descargar e Introducir, botones **Enviar a Drive**, **Enviar por email** y **Enviar por WhatsApp**. En el móvil y la tablet abren el menú «Compartir» con el archivo ya adjunto (allí se elige Drive, Gmail o WhatsApp y el contacto). En un ordenador que no pueda compartir archivos, se descarga y se abre Drive, el correo o WhatsApp Web para adjuntarlo.
 
 ## Límites del plan gratuito de Supabase
 

@@ -4,7 +4,7 @@ import { esc, aviso, errorAviso, cargando, datosFormulario, confirmar } from '..
 import { leerAjustes, guardarAjustes } from '../ajustes.js';
 import { cambiarPin, fijarMinutosBloqueo, bloquearYa } from '../pin.js';
 import { elegirArchivo } from '../importar.js';
-import { descargarCopia, introducirCopia, ultimaCopia } from '../copia.js';
+import { descargarCopia, introducirCopia, ultimaCopia, enviarCopia } from '../copia.js';
 import { ajustesAvisos, guardarAjustesAvisos, probar, notificacionesPosibles, pedirPermisoNotificaciones } from '../avisos.js';
 
 export async function render(el, { cuenta, alSalir }) {
@@ -102,8 +102,14 @@ export async function render(el, { cuenta, alSalir }) {
           <button type="button" class="btn btn-principal" data-a="descargar-datos">Descargar datos</button>
           <button type="button" class="btn" data-a="introducir-datos">Introducir datos</button>
         </div>
+        <p class="texto-suave">Para guardarla fuera de este dispositivo:</p>
+        <div class="acciones-form envio-copia">
+          <button type="button" class="btn" data-enviar="drive">Enviar a Drive</button>
+          <button type="button" class="btn" data-enviar="email">Enviar por email</button>
+          <button type="button" class="btn btn-whatsapp" data-enviar="whatsapp">Enviar por WhatsApp</button>
+        </div>
       </section>
-      <p class="texto-suave version">Manely Belleza · versión alfa 0.7</p>
+      <p class="texto-suave version">Manely Belleza · versión alfa 0.8</p>
     </section>`;
 
   el.querySelector('[data-form="negocio"]').addEventListener('submit', async (e) => {
@@ -130,6 +136,8 @@ export async function render(el, { cuenta, alSalir }) {
     if (a === 'probar-aviso') probar();
     if (a === 'descargar-datos') { if (await descargarCopia()) render(el, { cuenta, alSalir }); }
     if (a === 'introducir-datos') introducirCopia();
+    const enviar = e.target.closest('[data-enviar]')?.dataset.enviar;
+    if (enviar) { await enviarCopia(enviar); render(el, { cuenta, alSalir }); }
     if (a === 'notificaciones') {
       const r = await pedirPermisoNotificaciones();
       aviso(r === 'granted' ? 'Notificaciones permitidas' : 'No se han permitido las notificaciones', r === 'granted' ? 'ok' : 'error');

@@ -32,41 +32,121 @@ export function ultimaCopia() {
 }
 
 // ---------------------------------------------------------------------
-// Descargar
+// Preparar el .zip
+// ---------------------------------------------------------------------
+async function generarCopia() {
+  const [{ copia, faltan }, JSZip] = await Promise.all([db.exportarDatos(VERSION), cargarJSZip()]);
+  const zip = new JSZip();
+  const total = Object.keys(NOMBRES).reduce((a, t) => a + (copia[t]?.length || 0), 0);
+  zip.file('datos.json', JSON.stringify(copia));
+  for (const t of Object.keys(NOMBRES)) zip.file(`tablas/${t}.json`, JSON.stringify(copia[t] || [], null, 1));
+  zip.file('LEEME.txt', [
+    'Copia de seguridad de Manely Belleza',
+    `Hecha el ${new Date().toLocaleString('es-ES')}`,
+    '',
+    'Para recuperarla: en la app, Ajustes > Copia de seguridad > Introducir datos,',
+    'y elegir este mismo archivo .zip (no hace falta descomprimirlo).',
+    '',
+    'datos.json         todo junto (es lo que lee la app al recuperar)',
+    'tablas/*.json      cada tabla por separado, por si hiciera falta consultarla',
+    '',
+    ...Object.entries(NOMBRES).map(([t, n]) => `${n}: ${copia[t]?.length || 0}`),
+  ].join('\r\n'));
+  const blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' });
+  return { blob, nombre: `Manely-copia-${hoyISO()}.zip`, total, faltan };
+}
+
+function apuntarCopia() { try { localStorage.setItem(CLAVE_ULTIMA, new Date().toISOString()); } catch { /* */ } }
+function avisoFaltan(faltan) {
+  if (faltan.length) aviso(`Ojo: la copia va sin ${faltan.map((t) => NOMBRES[t]).join(', ')}. Falta ejecutar algún archivo SQL.`, 'error');
+}
+function bajarArchivo(blob, nombre) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = nombre;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
+
+// ---------------------------------------------------------------------
+// Descargar (se guarda en la carpeta Descargas de este dispositivo)
 // ---------------------------------------------------------------------
 export async function descargarCopia() {
   try {
     cargando(true);
-    const [{ copia, faltan }, JSZip] = await Promise.all([db.exportarDatos(VERSION), cargarJSZip()]);
-    const zip = new JSZip();
-    const total = Object.keys(NOMBRES).reduce((a, t) => a + (copia[t]?.length || 0), 0);
-    zip.file('datos.json', JSON.stringify(copia));
-    for (const t of Object.keys(NOMBRES)) zip.file(`tablas/${t}.json`, JSON.stringify(copia[t] || [], null, 1));
-    zip.file('LEEME.txt', [
-      'Copia de seguridad de Manely Belleza',
-      `Hecha el ${new Date().toLocaleString('es-ES')}`,
-      '',
-      'Para recuperarla: en la app, Ajustes > Copia de seguridad > Introducir datos,',
-      'y elegir este mismo archivo .zip (no hace falta descomprimirlo).',
-      '',
-      'datos.json         todo junto (es lo que lee la app al recuperar)',
-      'tablas/*.json      cada tabla por separado, por si hiciera falta consultarla',
-      '',
-      ...Object.entries(NOMBRES).map(([t, n]) => `${n}: ${copia[t]?.length || 0}`),
-    ].join('\r\n'));
-    const blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' });
-    const nombre = `Manely-copia-${hoyISO()}.zip`;
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = nombre;
-    document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 60000);
-    try { localStorage.setItem(CLAVE_ULTIMA, new Date().toISOString()); } catch { /* */ }
-    if (faltan.length) aviso(`Copia descargada, pero sin: ${faltan.map((t) => NOMBRES[t]).join(', ')}. Falta ejecutar algún archivo SQL.`, 'error');
-    else aviso(`Copia descargada: ${nombre} (${total} datos)`);
+    const { blob, nombre, total, faltan } = await generarCopia();
+    bajarArchivo(blob, nombre);
+    apuntarCopia();
+    if (faltan.length) avisoFaltan(faltan); else aviso(`Copia descargada en Descargas: ${nombre} (${total} datos)`);
     return true;
   } catch (e) { errorAviso(e, 'No se pudo hacer la copia'); return false; }
   finally { cargando(false); }
+}
+
+// ---------------------------------------------------------------------
+// Enviar a Drive, por email o por WhatsApp
+// En el móvil y la tablet se abre el menú «Compartir» del sistema con el
+// archivo ya adjunto: allí se elige Drive, Gmail o WhatsApp (y el contacto).
+// Si el navegador no puede compartir archivos (algunos ordenadores), se
+// descarga y se abre el destino para adjuntarlo a mano.
+// ---------------------------------------------------------------------
+const DESTINOS = {
+  drive: { titulo: 'Guardar en Drive', app: 'Drive', abrir: 'https://drive.google.com/drive/my-drive',
+    pasos: 'Se ha descargado la copia y se ha abierto Google Drive. Arrastra allí el archivo desde la carpeta Descargas (o pulsa «Nuevo» → «Subir archivo»).' },
+  email: { titulo: 'Enviar por email', app: 'Gmail (o tu correo)', abrir: null,
+    pasos: 'Se ha descargado la copia y se ha abierto el correo. Adjunta el archivo desde la carpeta Descargas y envíatelo.' },
+  whatsapp: { titulo: 'Enviar por WhatsApp', app: 'WhatsApp', abrir: 'https://web.whatsapp.com/',
+    pasos: 'Se ha descargado la copia y se ha abierto WhatsApp Web. Abre el chat, pulsa el clip 📎 → Documento y elige el archivo de la carpeta Descargas.' },
+};
+
+export async function enviarCopia(destino) {
+  const d = DESTINOS[destino];
+  let copia;
+  try { cargando(true); copia = await generarCopia(); }
+  catch (e) { return errorAviso(e, 'No se pudo hacer la copia'); }
+  finally { cargando(false); }
+  const archivo = new File([copia.blob], copia.nombre, { type: 'application/zip' });
+  const datosCompartir = { files: [archivo], title: copia.nombre, text: `Copia de seguridad de Manely Belleza (${textoFecha(hoyISO())})` };
+  if (navigator.canShare?.({ files: [archivo] })) {
+    const compartir = async () => {
+      try {
+        await navigator.share(datosCompartir);
+        apuntarCopia(); avisoFaltan(copia.faltan);
+        return 'ok';
+      } catch (e) {
+        if (e.name === 'AbortError') return 'cancelado';
+        if (e.name === 'NotAllowedError') return 'permiso';
+        errorAviso(e, 'No se pudo compartir'); return 'error';
+      }
+    };
+    // Si la copia tardó en prepararse, el navegador pide volver a pulsar
+    if (await compartir() === 'permiso') {
+      const { el, cerrar } = abrirHoja(`
+        <div class="hoja-cuerpo">
+          <h2 class="hoja-titulo">Copia preparada</h2>
+          <p>${esc(copia.nombre)} · ${copia.total} datos. Pulsa el botón y elige <strong>${esc(d.app)}</strong> en el menú.</p>
+          <div class="hoja-pie sin-borde">
+            <button type="button" class="btn" data-cerrar>Cancelar</button>
+            <button type="button" class="btn btn-principal" data-compartir>${esc(d.titulo)}</button>
+          </div>
+        </div>`, { ancho: 'estrecha' });
+      el.querySelector('[data-compartir]').addEventListener('click', async () => { cerrar(); await compartir(); });
+    }
+    return;
+  }
+  // Sin «Compartir» con archivos: descargar y abrir el destino
+  bajarArchivo(copia.blob, copia.nombre);
+  apuntarCopia(); avisoFaltan(copia.faltan);
+  if (destino === 'email') {
+    location.href = `mailto:?subject=${encodeURIComponent(`Copia de seguridad Manely Belleza ${textoFecha(hoyISO())}`)}&body=${encodeURIComponent('Adjunto la copia de seguridad de la app (archivo .zip de la carpeta Descargas).')}`;
+  } else window.open(d.abrir, '_blank', 'noopener');
+  abrirHoja(`
+    <div class="hoja-cuerpo">
+      <h2 class="hoja-titulo">${esc(d.titulo)}</h2>
+      <p>${esc(d.pasos)}</p>
+      <p class="texto-suave">Archivo: ${esc(copia.nombre)}</p>
+      <div class="hoja-pie sin-borde"><button type="button" class="btn btn-principal" data-cerrar>Vale</button></div>
+    </div>`, { ancho: 'estrecha' });
 }
 
 // ---------------------------------------------------------------------

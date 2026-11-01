@@ -1,6 +1,6 @@
 // Catálogo de servicios
 import * as db from '../db.js';
-import { esc, euros, abrirHoja, aviso, errorAviso, cargando, datosFormulario, confirmar } from '../util.js';
+import { esc, euros, abrirHoja, aviso, errorAviso, cargando, datosFormulario, confirmar, campoDuracion, leerDuracion } from '../util.js';
 import { confirmarConPin } from '../pin.js';
 import { duracionTexto } from '../fechas.js';
 
@@ -57,7 +57,7 @@ function formulario(s, categorias, alGuardar) {
           <input name="categoria" list="listaCategorias" value="${esc(s.categoria || '')}" placeholder="Manos, Pies, Mirada…">
           <datalist id="listaCategorias">${categorias.map((c) => `<option value="${esc(c)}">`).join('')}</datalist></label>
         <div class="fila-3">
-          <label class="campo"><span>Duración (min)</span><input name="duracion_min" type="number" min="5" step="5" inputmode="numeric" value="${esc(s.duracion_min)}"></label>
+          ${campoDuracion('dur', s.duracion_min)}
           <label class="campo"><span>Precio (€)</span><input name="precio" inputmode="decimal" value="${esc(s.precio)}" placeholder="0,00"></label>
           <label class="campo"><span>IVA (%)</span><input name="iva_pct" type="number" min="0" max="21" step="1" value="${esc(s.iva_pct ?? 21)}"></label>
         </div>
@@ -105,7 +105,10 @@ function formulario(s, categorias, alGuardar) {
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const d = datosFormulario(form);
+    delete d.dur_h; delete d.dur_m;
+    d.duracion_min = leerDuracion(form, 'dur');
     if (!d.nombre) return aviso('Escribe el nombre del servicio.', 'error');
+    if (d.duracion_min < 5) return aviso('Pon la duración (horas y minutos).', 'error');
     try {
       cargando(true);
       await db.guardarServicio({ ...s, ...d, id: s.id });

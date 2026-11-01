@@ -954,3 +954,26 @@ body.con-tpv { overflow: hidden; }
 .lista-copia li { display: flex; justify-content: space-between; gap: 12px; padding: 8px 12px; }
 .lista-copia li + li { border-top: 1px solid var(--linea); }
 .lista-copia b { font-variant-numeric: tabular-nums; }
+.btn-whatsapp { background: #1F8F4E; border-color: #1F8F4E; color: #fff; }
+.btn-whatsapp:hover { background: #17733E; border-color: #17733E; }
+.huecos { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 12px; }
+.chip-hueco { border: 1px solid #CDB8EC; background: var(--lavanda-2); color: var(--violeta-osc); border-radius: 999px; padding: 6px 12px; font: inherit; font-weight: 600; cursor: pointer; }
+.duracion-hm .hm { display: flex; gap: 8px; }
+.duracion-hm .hm label { display: flex; align-items: center; gap: 6px; flex: 1; }
+.duracion-hm .hm input:not([type=checkbox]) { min-width: 0; text-align: center; }
+.duracion-hm .hm span { color: var(--suave); font-weight: 600; }
+
+/* Mover cita con el dedo */
+.velo-mover { position: fixed; inset: 0; z-index: 45; background: rgba(0, 0, 0, .4); touch-action: none; cursor: grab; }
+.mover-ayuda { position: absolute; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom)); transform: translateX(-50%); width: max-content; max-width: calc(100vw - 32px);
+  margin: 0; padding: 10px 16px; border-radius: 999px; background: #fff; color: var(--tinta); font-weight: 600; text-align: center; box-shadow: var(--sombra-hoja); }
+.mover-cancelar { position: fixed; z-index: 47; top: calc(14px + env(safe-area-inset-top)); right: 14px; width: 52px; height: 52px; border-radius: 50%;
+  border: 3px solid #fff; background: var(--rojo, #C2362B); color: #fff; font-size: 1.4rem; font-weight: 800; cursor: pointer; box-shadow: 0 6px 18px rgba(0,0,0,.35); }
+.cita-bloque.fantasma { z-index: 46; touch-action: none; cursor: grab; box-shadow: 0 0 0 3px #fff, 0 10px 28px rgba(0,0,0,.45); transition: box-shadow .15s; overflow: visible; }
+.cita-bloque.fantasma.arrastrando { cursor: grabbing; box-shadow: 0 0 0 3px #fff, 0 18px 40px rgba(0,0,0,.55); opacity: .95; }
+.fantasma-hora { position: absolute; left: 0; top: -30px; padding: 3px 10px; border-radius: 999px; background: var(--tinta); color: #fff; font-size: .8rem; font-weight: 700; white-space: nowrap; pointer-events: none; }
+.fantasma-hora:empty { display: none; }
+.cita-bloque.origen-mover { outline: 2px dashed #fff; outline-offset: -2px; opacity: .5; }
+.destino-mover { background: var(--lavanda) !important; outline: 3px solid var(--violeta); outline-offset: -3px; }
+.dia-tira.destino-mover, .sem-cab.destino-mover { position: relative; z-index: 46; }
+body.moviendo-cita { user-select: none; -webkit-user-select: none; }

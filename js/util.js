@@ -143,3 +143,26 @@ export function datosFormulario(form) {
   }
   return o;
 }
+
+// ---------- Duración en horas y minutos ----------
+// Dos casillas (horas y minutos) en lugar de escribirlo todo en minutos
+export function campoDuracion(nombre, minutos, etiqueta = 'Duración') {
+  const m = Math.max(0, Number(minutos) || 0);
+  return `<fieldset class="campo duracion-hm">
+    <legend>${esc(etiqueta)}</legend>
+    <div class="hm">
+      <label><input type="number" name="${nombre}_h" min="0" max="12" step="1" inputmode="numeric" value="${Math.floor(m / 60)}" aria-label="Horas"><span>h</span></label>
+      <label><input type="number" name="${nombre}_m" min="0" max="59" step="5" inputmode="numeric" value="${m % 60}" aria-label="Minutos"><span>min</span></label>
+    </div>
+  </fieldset>`;
+}
+export function leerDuracion(form, nombre) {
+  const h = Math.max(0, Math.floor(Number(form.elements[`${nombre}_h`].value) || 0));
+  const m = Math.min(59, Math.max(0, Math.floor(Number(form.elements[`${nombre}_m`].value) || 0)));
+  return h * 60 + m;
+}
+export function ponerDuracion(form, nombre, minutos) {
+  const m = Math.max(0, Number(minutos) || 0);
+  form.elements[`${nombre}_h`].value = Math.floor(m / 60);
+  form.elements[`${nombre}_m`].value = m % 60;
+}

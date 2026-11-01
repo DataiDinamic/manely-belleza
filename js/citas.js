@@ -1,7 +1,7 @@
 // Formulario de cita y ficha de detalle (se usan desde la agenda y desde la clienta)
 import * as db from './db.js';
 import { esc, euros, nombreCompleto, abrirHoja, confirmar, pedirTexto, aviso, errorAviso,
-  telefonoWhatsApp, esmalteAleatorio, cargando } from './util.js';
+  telefonoWhatsApp, esmalteAleatorio, cargando, campoDuracion, leerDuracion, ponerDuracion } from './util.js';
 import { hoyISO, aMinutos, aHora, textoDiaLargo, duracionTexto, horaCorta } from './fechas.js';
 import { abrirCobro, abrirDetalleCobro, textoPagos } from './caja.js';
 import { textoMinutosAntes } from './avisos.js';
@@ -79,8 +79,7 @@ export async function abrirFormularioCita({ cita = null, fecha = hoyISO(), hora 
         </div>
 
         <div class="fila-2">
-          <label class="campo"><span>Duración (min)</span>
-            <input type="number" name="duracion" min="5" max="720" step="5" inputmode="numeric"></label>
+          ${campoDuracion('duracion', cita ? cita.duracion_min : 30, 'Duración total')}
           <label class="campo"><span>Aviso previo</span>
             <select name="aviso_min">${opcionesAviso.map((m) =>
               `<option value="${m ?? ''}" ${m === avisoInicial ? 'selected' : ''}>${textoMinutosAntes(m)}</option>`).join('')}</select></label>
@@ -100,9 +99,8 @@ export async function abrirFormularioCita({ cita = null, fecha = hoyISO(), hora 
     </form>`, { ancho: 'ancha' });
 
   const form = el.querySelector('form');
-  const inpDur = form.elements.duracion;
+  const leerDur = () => leerDuracion(form, 'duracion');
   const sumaDur = () => estado.lineas.reduce((a, l) => a + (Number(l.duracion_min) || 0), 0);
-  if (cita) inpDur.value = cita.duracion_min;
 
   // ---- selector de clienta con búsqueda ----
   const zonaClienta = el.querySelector('.selector-clienta');
@@ -165,10 +163,10 @@ export async function abrirFormularioCita({ cita = null, fecha = hoyISO(), hora 
     actualizar();
   }
   function actualizar() {
-    if (!estado.duracionManual) inpDur.value = sumaDur() || 30;
+    if (!estado.duracionManual) ponerDuracion(form, 'duracion', sumaDur() || 30);
     const total = estado.lineas.reduce((a, l) => a + (Number(l.precio) || 0), 0);
     const h = form.elements.hora.value;
-    const fin = h ? aHora(aMinutos(h) + (Number(inpDur.value) || 0)) : '';
+    const fin = h ? aHora(aMinutos(h) + leerDur()) : '';
     el.querySelector('.resumen-cita').textContent = h ? `${h}–${fin} · ${euros(total)}` : euros(total);
   }
   ul.addEventListener('input', (e) => {
@@ -196,7 +194,7 @@ export async function abrirFormularioCita({ cita = null, fecha = hoyISO(), hora 
     pintarLineas();
     if (v === '__libre') ul.querySelector('.linea:last-child .linea-nombre')?.focus();
   });
-  inpDur.addEventListener('input', () => { estado.duracionManual = true; actualizar(); });
+  form.querySelector('.duracion-hm').addEventListener('input', () => { estado.duracionManual = true; actualizar(); });
   form.elements.hora.addEventListener('input', actualizar);
 
   pintarClienta();
@@ -212,7 +210,8 @@ export async function abrirFormularioCita({ cita = null, fecha = hoyISO(), hora 
     const lineas = estado.lineas.filter((l) => l.nombre.trim());
     if (!lineas.length) return aviso('Añade al menos un servicio.', 'error');
 
-    const duracion = Number(f.duracion.value) || sumaDur() || 30;
+    const duracion = leerDur() || sumaDur() || 30;
+    if (duracion > 720) return aviso('La cita no puede durar más de 12 horas.', 'error');
     const inicio = aMinutos(f.hora.value);
     const datos = {
       id: cita?.id || null,
@@ -289,10 +288,7 @@ export async function abrirDetalleCita(id, alCambiar) {
   let c;
   try { c = await db.obtenerCita(id); } catch (e) { return errorAviso(e, 'No se pudo abrir la cita'); }
   const cl = c.clienta;
-  const negocio = db.negocioActual();
   const tel = telefonoWhatsApp(cl?.telefono);
-  const recordatorio = encodeURIComponent(
-    `Hola ${cl?.nombre || ''}, te recordamos tu cita en ${negocio?.nombre || 'el centro'} el ${textoDiaLargo(c.fecha).toLowerCase()} a las ${c.hora}. Si no puedes venir, avísanos. ¡Gracias!`);
   const activa = !['anulada', 'realizada', 'no_presentada'].includes(c.estado);
   let cobro = null;
   if (c.cobrada) { try { cobro = await db.cobroDeCita(c.id); } catch { /* se muestra sin detalle */ } }
@@ -324,19 +320,22 @@ export async function abrirDetalleCita(id, alCambiar) {
         🔔 Aviso previo: <b>${esc(textoMinutosAntes(c.aviso_min ?? null))}</b></button>` : ''}
       ${cl?.telefono ? `<div class="contacto">
         <a class="btn" href="tel:${esc(cl.telefono.replace(/\s/g, ''))}">Llamar</a>
-        ${tel ? `<a class="btn" target="_blank" rel="noopener" href="https://wa.me/${tel}?text=${recordatorio}">Recordar por WhatsApp</a>` : ''}
+        ${tel ? '<button type="button" class="btn btn-whatsapp" data-whatsapp>WhatsApp</button>' : ''}
       </div>` : ''}
     </div>
     <footer class="hoja-pie acciones-cita">
       ${cobrable ? '<button class="btn btn-principal" data-a="cobrar">Cobrar</button>' : ''}
       ${c.estado === 'pendiente' ? '<button class="btn" data-a="confirmada">Confirmar</button>' : ''}
       ${activa ? '<button class="btn" data-a="mover">Cambiar hora</button>' : ''}
+      ${activa ? '<button class="btn" data-a="arrastrar">Mover cita</button>' : ''}
       <button class="btn" data-a="editar">Editar</button>
       <button class="btn" data-a="repetir">Repetir</button>
       ${activa ? '<button class="btn" data-a="no_presentada">No vino</button>' : ''}
       ${activa ? '<button class="btn btn-peligro-suave" data-a="anular">Anular</button>' : ''}
       ${!activa && !c.cobrada ? '<button class="btn" data-a="pendiente">Volver a pendiente</button>' : ''}
     </footer>`, { ancho: 'normal' });
+
+  el.querySelector('[data-whatsapp]')?.addEventListener('click', () => mensajeWhatsApp(c, tel, () => { cerrar(); alCambiar?.(); }));
 
   el.querySelector('[data-aviso]')?.addEventListener('click', async (e) => {
     const boton = e.currentTarget;
@@ -358,6 +357,7 @@ export async function abrirDetalleCita(id, alCambiar) {
     const a = b.dataset.a;
     try {
       if (a === 'cobrar') { cerrar(); return abrirCobro({ cita: c, alCobrar: () => alCambiar?.() }); }
+      if (a === 'arrastrar') { cerrar(); return window.dispatchEvent(new CustomEvent('mb:mover-cita', { detail: { id: c.id, fecha: c.fecha } })); }
       if (a === 'ver-cobro') { cerrar(); return abrirDetalleCobro(cobro.id, () => alCambiar?.()); }
       if (a === 'editar' || a === 'mover') {
         cerrar();
@@ -380,6 +380,107 @@ export async function abrirDetalleCita(id, alCambiar) {
       cerrar();
       alCambiar?.();
     } catch (err) { errorAviso(err); }
+  });
+}
+
+// ---------------------------------------------------------------------
+// Mensaje de WhatsApp a la clienta: se prepara con el mensaje predefinido,
+// se puede cambiar y se abre WhatsApp con el texto ya escrito.
+// ---------------------------------------------------------------------
+const CLAVE_PLANTILLA = 'mb_plantilla_whatsapp_v1';
+export const PLANTILLA_WHATSAPP = '¡Buenas! Te confirmo la cita para [tratamientos], el día [día] a las [hora]. Para cualquier cosa escríbeme aquí y lo arreglo lo antes posible. Gracias.';
+export function leerPlantilla() {
+  try { return localStorage.getItem(CLAVE_PLANTILLA) || PLANTILLA_WHATSAPP; } catch { return PLANTILLA_WHATSAPP; }
+}
+function guardarPlantilla(texto) {
+  try { texto && texto !== PLANTILLA_WHATSAPP ? localStorage.setItem(CLAVE_PLANTILLA, texto) : localStorage.removeItem(CLAVE_PLANTILLA); } catch { /* */ }
+}
+const enumerar = (l) => (l.length > 1 ? `${l.slice(0, -1).join(', ')} y ${l.at(-1)}` : l[0] || '');
+export function rellenarPlantilla(plantilla, c) {
+  const datos = {
+    nombre: c.clienta?.nombre || '',
+    tratamientos: enumerar(c.servicios.map((x) => x.nombre.trim())),
+    'día': textoDiaLargo(c.fecha).replace(',', ''),
+    dia: textoDiaLargo(c.fecha).replace(',', ''),
+    hora: c.hora,
+  };
+  return plantilla.replace(/\[(nombre|tratamientos|día|dia|hora)\]/gi, (m, k) => datos[k.toLowerCase()] ?? m);
+}
+
+function mensajeWhatsApp(c, tel, alConfirmar) {
+  const pendiente = c.estado === 'pendiente';
+  const { el, cerrar } = abrirHoja(`
+    <form novalidate>
+      <header class="hoja-cabecera">
+        <div><h2 class="hoja-titulo">Mensaje por WhatsApp</h2>
+          <p class="texto-suave">Para ${esc(nombreCompleto(c.clienta))} · ${esc(c.clienta?.telefono || '')}</p></div>
+        <button type="button" class="btn-icono" data-cerrar aria-label="Cerrar">✕</button>
+      </header>
+      <div class="hoja-cuerpo">
+        <label class="campo"><span>Mensaje (se puede cambiar)</span>
+          <textarea name="texto" rows="6">${esc(rellenarPlantilla(leerPlantilla(), c))}</textarea></label>
+        ${pendiente ? '<label class="check"><input type="checkbox" name="confirmar" checked> Marcar la cita como confirmada</label>' : ''}
+        <button type="button" class="enlace" data-plantilla>Cambiar el mensaje predefinido</button>
+      </div>
+      <footer class="hoja-pie">
+        <button type="button" class="btn" data-cerrar>Cancelar</button>
+        <button class="btn btn-whatsapp">Abrir WhatsApp</button>
+      </footer>
+    </form>`, { ancho: 'normal' });
+  const f = el.querySelector('form');
+  el.querySelector('[data-plantilla]').addEventListener('click', async () => {
+    const nueva = await editarPlantilla();
+    if (nueva !== null) f.elements.texto.value = rellenarPlantilla(nueva, c);
+  });
+  f.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const texto = f.elements.texto.value.trim();
+    if (!texto) return aviso('Escribe el mensaje.', 'error');
+    // Se abre WhatsApp con el mensaje escrito: solo queda pulsar «Enviar» allí
+    window.open(`https://wa.me/${tel}?text=${encodeURIComponent(texto)}`, '_blank', 'noopener');
+    cerrar();
+    if (pendiente && f.elements.confirmar?.checked) {
+      try { await db.cambiarEstadoCita(c.id, 'confirmada'); cambioDatos(); aviso('Cita confirmada'); alConfirmar?.(); }
+      catch (err) { errorAviso(err); }
+    }
+  });
+}
+
+function editarPlantilla() {
+  return new Promise((resolve) => {
+    let hecho = false;
+    const { el, cerrar } = abrirHoja(`
+      <form novalidate>
+        <header class="hoja-cabecera">
+          <h2 class="hoja-titulo">Mensaje predefinido</h2>
+          <button type="button" class="btn-icono" data-cerrar aria-label="Cerrar">✕</button>
+        </header>
+        <div class="hoja-cuerpo">
+          <p class="texto-suave">Las palabras entre corchetes se cambian solas por los datos de cada cita. Toca una para añadirla donde esté el cursor:</p>
+          <div class="huecos">${['[nombre]', '[tratamientos]', '[día]', '[hora]'].map((h) => `<button type="button" class="chip-hueco" data-hueco="${h}">${h}</button>`).join('')}</div>
+          <label class="campo"><span>Mensaje</span><textarea name="plantilla" rows="6">${esc(leerPlantilla())}</textarea></label>
+        </div>
+        <footer class="hoja-pie">
+          <button type="button" class="btn pie-izquierda" data-original>Volver al original</button>
+          <button type="button" class="btn" data-cerrar>Cancelar</button>
+          <button class="btn btn-principal">Guardar</button>
+        </footer>
+      </form>`, { ancho: 'normal', alCerrar: () => { if (!hecho) resolve(null); } });
+    const ta = el.querySelector('textarea');
+    el.querySelector('.huecos').addEventListener('click', (e) => {
+      const b = e.target.closest('[data-hueco]'); if (!b) return;
+      const i = ta.selectionStart ?? ta.value.length, j = ta.selectionEnd ?? i;
+      ta.value = ta.value.slice(0, i) + b.dataset.hueco + ta.value.slice(j);
+      ta.focus(); ta.setSelectionRange(i + b.dataset.hueco.length, i + b.dataset.hueco.length);
+    });
+    el.querySelector('[data-original]').addEventListener('click', () => { ta.value = PLANTILLA_WHATSAPP; });
+    el.querySelector('form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const texto = ta.value.trim() || PLANTILLA_WHATSAPP;
+      guardarPlantilla(texto);
+      hecho = true; resolve(texto); cerrar();
+      aviso('Mensaje predefinido guardado');
+    });
   });
 }
 
