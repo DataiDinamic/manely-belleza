@@ -135,7 +135,7 @@ async function pintarDia(zona) {
   const htmlBloques = bloques.map((c) => {
     const alturaPx = Math.max(c.duracion_min * PPM, 26);
     const compacto = alturaPx < 56;
-    return `<button class="cita-bloque estado-${c.estado} ${compacto ? 'compacto' : ''}" data-cita="${c.id}"
+    return `<button class="cita-bloque estado-${c.estado} ${compacto ? 'compacto' : ''} ${c.cobrada ? 'cobrada' : ''}" data-cita="${c.id}"
       style="--esmalte:${esc(c.clienta?.color || '#B5838D')};top:${(c.inicio - ini) * PPM}px;height:${alturaPx}px;
              left:calc(${(c._col / c._cols) * 100}% + 2px);width:calc(${100 / c._cols}% - 4px)"
       aria-label="${c.hora} ${esc(nombreCompleto(c.clienta))}, ${esc(textoServicios(c))}, ${ESTADOS[c.estado]}">
@@ -167,7 +167,7 @@ async function pintarDia(zona) {
             <li><button data-cita="${c.id}" class="estado-${c.estado}" style="--esmalte:${esc(c.clienta?.color || '#B5838D')}">
               <time>${c.hora}</time>
               <span><strong>${esc(nombreCompleto(c.clienta))}</strong><small>${esc(textoServicios(c))}</small></span>
-              <em>${c.estado === 'confirmada' ? '' : esc(ESTADOS[c.estado])}</em>
+              <em class="${c.cobrada ? 'em-cobrada' : ''}">${c.cobrada ? 'Cobrada' : c.estado === 'confirmada' ? '' : esc(ESTADOS[c.estado])}</em>
             </button></li>`).join('')}
         </ol>
         ${anuladas ? `<label class="check"><input type="checkbox" data-anuladas ${st.anuladas ? 'checked' : ''}> Ver anuladas (${anuladas})</label>` : ''}

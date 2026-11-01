@@ -1,4 +1,4 @@
-# Manely Belleza · app de gestión (alfa 0.1 — fase 1)
+# Manely Belleza · app de gestión (alfa 0.3)
 
 Agenda, clientas y servicios. Funciona en móvil, tablet y ordenador, y se instala como app desde el navegador.
 
@@ -43,6 +43,29 @@ Abre `http://localhost:8000`. Para forzar la demostración aunque haya configura
 - **Servicios**: por categorías, con duración, precio con IVA incluido y tipo de IVA. Cada cita guarda el precio del momento, así que cambiar una tarifa no altera las citas pasadas. Los servicios que ya no se ofrecen se desactivan.
 - **Ajustes**: datos del centro (los usarán las facturas), horario de la agenda, tiempo de bloqueo y cambio de PIN.
 
+## Fase 2: Caja (versión 0.2)
+
+**Instalación sobre la 0.1:** ejecutar `supabase/002_fase2_caja.sql` en el SQL Editor (pestaña nueva con **+**, **Run**, y **Run query** si avisa de «destructive operations»). Solo añade tablas: no toca clientas, servicios ni citas. Después, subir a GitHub los archivos de la actualización.
+
+- **Cobrar una cita**: desde su ficha, botón **Cobrar**. Vienen puestos sus servicios; se pueden cambiar precios, añadir productos u otros conceptos y aplicar descuento (en € o %). Forma de pago: datáfono, efectivo (calcula el cambio), Bizum o mixto. Al cobrar, la cita queda como realizada y en la agenda aparece «cobrada».
+- **Venta suelta**: en **Caja → Nueva venta**, con o sin clienta.
+- **Productos**: en **Catálogo → Productos**, con marca, precio, IVA, coste y stock opcional (se descuenta en cada venta y se devuelve si se anula).
+- **Caja del día**: total cobrado y desglose por forma de pago, citas pendientes de cobrar, lista de cobros y **cierre de caja** (fondo inicial + efectivo cobrado frente a lo contado).
+- **Los cobros no se modifican ni se borran**: se **anulan** con motivo y PIN, y queda registrado quién y cuándo. La base de datos solo permite crear y anular cobros a través de sus funciones.
+- La ficha de cada clienta muestra lo **gastado de verdad** (cobros, con productos y descuentos) y su lista de cobros.
+
+## Versión 0.3: TPV de botones y facturas
+
+**Instalación:** ejecutar en el SQL Editor `supabase/002_fase2_caja.sql` (si no se hizo con la 0.2; repetirlo no hace daño) y después `supabase/003_facturas.sql`. Luego subir los archivos a GitHub.
+
+- **TPV en tablet y ordenador** (pantallas de 700 px o más): ticket a la izquierda, **botones de categorías** en el centro (las categorías de servicios y productos del Catálogo), al pulsar una salen sus tratamientos y productos, con «‹ Categorías» para volver. **Teclado numérico** a la derecha: escribir un importe y **+** lo añade al ticket, **−** lo resta como descuento, **⌫** borra un número, **C** limpia; para cambiar el precio de una línea se escribe en el teclado y se toca el precio de la línea. Abajo, **Datáfono / Efectivo / Bizum / Mixto** y el total.
+- **En el móvil** sigue el formulario de cobro.
+- Al elegir la forma de pago sale el **resumen** con **Cancelar** (rojo), **Factura** (azul) y **Cobrar** (verde).
+- **Facturas**: simplificada (sin datos de la clienta) o completa (nombre, NIF y dirección; se pueden guardar en su ficha). Numeración correlativa por año: `T2026-0001…` (simplificadas) y `F2026-0001…` (completas). PDF con logo, datos del centro y desglose de IVA, para **enviar** (correo, WhatsApp… desde el móvil o la tablet) o **descargar**. Se puede hacer la factura de un cobro más tarde y volver a descargarla desde el cobro.
+- Para facturar hacen falta en **Ajustes → Datos del centro** al menos el **titular y el NIF** (y la **dirección** para las completas).
+- Un cobro con factura **no se puede anular** desde la app: hará falta una factura rectificativa (próxima versión; consultar con el gestor).
+- Estas facturas aún **no envían registros a Hacienda (Verifactu)**: será obligatorio para autónomos desde el 1 de julio de 2027 y se añadirá antes.
+
 ## Límites del plan gratuito de Supabase
 
 - El proyecto **se pausa tras una semana sin uso**; con uso diario no pasa. Si se pausa, se reactiva desde el panel.
@@ -59,9 +82,14 @@ js/app.js               arranque, acceso, navegación
 js/db.js                acceso a datos (Supabase o demostración)
 js/pin.js               PIN de bloqueo
 js/citas.js             formulario y detalle de cita
+js/caja.js              cobro (móvil), resumen Cancelar/Cobrar/Factura, detalle y anulación
+js/tpv.js               TPV de botones (tablet y ordenador)
+js/factura.js           facturas: datos, PDF, enviar y descargar
 js/fechas.js            fechas en hora local (sin desfases)
-js/vistas/*.js          agenda, clientas, servicios, ajustes
-supabase/001_fase1.sql  tablas, reglas de seguridad y funciones
+js/vistas/*.js          agenda, caja, clientas, catálogo (servicios y productos), ajustes
+supabase/001_fase1.sql  tablas, reglas de seguridad y funciones (fase 1)
+supabase/002_fase2_caja.sql  productos, cobros y cierres de caja (fase 2)
+supabase/003_facturas.sql    facturas con numeración correlativa (0.3)
 sw.js, manifest         instalación como app
 ```
 
@@ -69,7 +97,7 @@ Al publicar cambios, sube `VERSION` en `sw.js` para que los dispositivos descarg
 
 ## Próximas fases
 
-2. Caja: cobro de cada cita (datáfono, efectivo o Bizum) y venta de productos.
+2. ~~Caja~~ ✔ hecha en la versión 0.2.
 3. Proveedores y compras, con los PDF de las facturas recibidas.
 4. Informe trimestral en un clic, en el mismo formato que recibe el gestor, y exportación de datos.
 5. Facturas a clientas en PDF y por email, con Verifactu (obligatorio para autónomos desde el 1 de julio de 2027).

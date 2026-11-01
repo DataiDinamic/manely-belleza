@@ -5,7 +5,8 @@ import { tienePin, crearPin, desbloquear, vigilar, borrarPin } from './pin.js';
 import { leerAjustes } from './ajustes.js';
 import * as agenda from './vistas/agenda.js';
 import * as clientas from './vistas/clientas.js';
-import * as servicios from './vistas/servicios.js';
+import * as catalogo from './vistas/catalogo.js';
+import * as caja from './vistas/caja.js';
 import * as ajustes from './vistas/ajustes.js';
 
 const raiz = document.getElementById('app');
@@ -105,8 +106,9 @@ async function salir() {
 
 const SECCIONES = [
   { id: 'agenda', texto: 'Agenda', icono: '<path d="M7 3v3M17 3v3M4 9h16M5 5h14a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1Z"/>' },
+  { id: 'caja', texto: 'Caja', icono: '<path d="M3 10h18v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-9ZM5 10V6a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v4M8 14h2M14 14h2M8 17h8"/>' },
   { id: 'clientas', texto: 'Clientas', icono: '<path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM4 21a8 8 0 0 1 16 0"/>' },
-  { id: 'servicios', texto: 'Servicios', icono: '<path d="M9 3h6v4l2 3v10a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1V10l2-3V3ZM7 13h10"/>' },
+  { id: 'catalogo', texto: 'Catálogo', icono: '<path d="M9 3h6v4l2 3v10a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1V10l2-3V3ZM7 13h10"/>' },
   { id: 'ajustes', texto: 'Ajustes', icono: '<path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/>' },
 ];
 
@@ -126,7 +128,8 @@ function pintarMarco() {
 
 async function navegar() {
   if (!document.body.classList.contains('con-app')) return;
-  const [seccion = 'agenda', param] = (location.hash.slice(1) || 'agenda').split('/');
+  let [seccion = 'agenda', param] = (location.hash.slice(1) || 'agenda').split('/');
+  if (seccion === 'servicios') seccion = 'catalogo';   // dirección antigua
   raiz.querySelectorAll('[data-seccion]').forEach((a) =>
     a.toggleAttribute('aria-current', a.dataset.seccion === seccion));
   const zona = document.getElementById('vista');
@@ -135,7 +138,8 @@ async function navegar() {
   zona.replaceChildren(el);
   try {
     if (seccion === 'clientas') await clientas.render(el, param);
-    else if (seccion === 'servicios') await servicios.render(el);
+    else if (seccion === 'catalogo') await catalogo.render(el, param);
+    else if (seccion === 'caja') await caja.render(el);
     else if (seccion === 'ajustes') await ajustes.render(el, { cuenta, alSalir: salir });
     else await agenda.render(el);
   } catch (e) { errorAviso(e, 'Error al abrir la sección'); }

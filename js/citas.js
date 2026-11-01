@@ -3,6 +3,7 @@ import * as db from './db.js';
 import { esc, euros, nombreCompleto, abrirHoja, confirmar, pedirTexto, aviso, errorAviso,
   telefonoWhatsApp, esmalteAleatorio, cargando } from './util.js';
 import { hoyISO, aMinutos, aHora, textoDiaLargo, duracionTexto, horaCorta } from './fechas.js';
+import { abrirCobro, abrirDetalleCobro, textoPagos } from './caja.js';
 
 export const ESTADOS = {
   pendiente: 'Pendiente de confirmar',
@@ -281,6 +282,9 @@ export async function abrirDetalleCita(id, alCambiar) {
   const recordatorio = encodeURIComponent(
     `Hola ${cl?.nombre || ''}, te recordamos tu cita en ${negocio?.nombre || 'el centro'} el ${textoDiaLargo(c.fecha).toLowerCase()} a las ${c.hora}. Si no puedes venir, avísanos. ¡Gracias!`);
   const activa = !['anulada', 'realizada', 'no_presentada'].includes(c.estado);
+  let cobro = null;
+  if (c.cobrada) { try { cobro = await db.cobroDeCita(c.id); } catch { /* se muestra sin detalle */ } }
+  const cobrable = !c.cobrada && !['anulada', 'no_presentada'].includes(c.estado);
 
   const { el, cerrar } = abrirHoja(`
     <header class="hoja-cabecera detalle-cabecera" style="--esmalte:${esc(cl?.color || '#B5838D')}">
@@ -297,6 +301,8 @@ export async function abrirDetalleCita(id, alCambiar) {
         ${c.servicios.map((s) => `<li><span>${esc(s.nombre)}</span><small>${duracionTexto(Number(s.duracion_min))}</small><b>${euros(s.precio)}</b></li>`).join('')}
         <li class="total"><span>Total</span><small>${duracionTexto(c.duracion_min)}</small><b>${euros(c.total)}</b></li>
       </ul>
+      ${cobro ? `<button class="cobro-hecho" data-a="ver-cobro">
+        <span>Cobrada · <strong>${euros(cobro.total)}</strong> · ${esc(textoPagos(cobro.pagos))}</span><em>Ver cobro ›</em></button>` : ''}
       ${c.notas ? `<p class="detalle-notas"><strong>Notas:</strong> ${esc(c.notas)}</p>` : ''}
       ${cl?.notas ? `<p class="detalle-notas"><strong>Sobre la clienta:</strong> ${esc(cl.notas)}</p>` : ''}
       ${c.estado === 'anulada' && c.motivo_anulacion ? `<p class="detalle-notas"><strong>Motivo de anulación:</strong> ${esc(c.motivo_anulacion)}</p>` : ''}
@@ -307,14 +313,14 @@ export async function abrirDetalleCita(id, alCambiar) {
       </div>` : ''}
     </div>
     <footer class="hoja-pie acciones-cita">
+      ${cobrable ? '<button class="btn btn-principal" data-a="cobrar">Cobrar</button>' : ''}
       ${c.estado === 'pendiente' ? '<button class="btn" data-a="confirmada">Confirmar</button>' : ''}
-      ${activa ? '<button class="btn btn-exito" data-a="realizada">Hecha</button>' : ''}
       ${activa ? '<button class="btn" data-a="mover">Cambiar hora</button>' : ''}
       <button class="btn" data-a="editar">Editar</button>
       <button class="btn" data-a="repetir">Repetir</button>
       ${activa ? '<button class="btn" data-a="no_presentada">No vino</button>' : ''}
       ${activa ? '<button class="btn btn-peligro-suave" data-a="anular">Anular</button>' : ''}
-      ${!activa ? '<button class="btn" data-a="pendiente">Volver a pendiente</button>' : ''}
+      ${!activa && !c.cobrada ? '<button class="btn" data-a="pendiente">Volver a pendiente</button>' : ''}
     </footer>`, { ancho: 'normal' });
 
   el.addEventListener('click', async (e) => {
@@ -322,6 +328,8 @@ export async function abrirDetalleCita(id, alCambiar) {
     if (!b) return;
     const a = b.dataset.a;
     try {
+      if (a === 'cobrar') { cerrar(); return abrirCobro({ cita: c, alCobrar: () => alCambiar?.() }); }
+      if (a === 'ver-cobro') { cerrar(); return abrirDetalleCobro(cobro.id, () => alCambiar?.()); }
       if (a === 'editar' || a === 'mover') {
         cerrar();
         return abrirFormularioCita({ cita: c, enfocar: a === 'mover' ? 'fecha' : null, alGuardar: alCambiar });

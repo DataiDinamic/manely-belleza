@@ -4,6 +4,7 @@ import { esc, euros, nombreCompleto, iniciales, abrirHoja, confirmar, aviso, err
   telefonoWhatsApp, ESMALTES, esmalteAleatorio, datosFormulario } from '../util.js';
 import { hoyISO, textoFecha, textoDiaCorto } from '../fechas.js';
 import { abrirFormularioCita, abrirDetalleCita, ESTADOS, textoServicios } from '../citas.js';
+import { abrirDetalleCobro, textoPagos } from '../caja.js';
 
 let filtro = '';
 let verArchivadas = false;
@@ -63,8 +64,8 @@ async function renderFicha(contenedor, id) {
   const el = document.createElement('div');
   contenedor.replaceChildren(el);
   el.innerHTML = '<p class="cargando-texto">Cargando ficha…</p>';
-  let c, citas;
-  try { [c, citas] = await Promise.all([db.obtenerClienta(id), db.citasDeClienta(id)]); }
+  let c, citas, cobros;
+  try { [c, citas, cobros] = await Promise.all([db.obtenerClienta(id), db.citasDeClienta(id), db.cobrosDeClienta(id)]); }
   catch (e) {
     el.innerHTML = '<div class="vacio"><p>No se encontró esta clienta.</p><a class="btn" href="#clientas">Volver a clientas</a></div>';
     return errorAviso(e, 'Error');
@@ -73,7 +74,8 @@ async function renderFicha(contenedor, id) {
   const proximas = citas.filter((x) => x.fecha >= hoy && !['anulada', 'realizada', 'no_presentada'].includes(x.estado)).reverse();
   const pasadas = citas.filter((x) => !proximas.includes(x));
   const hechas = citas.filter((x) => x.estado === 'realizada');
-  const gastado = hechas.reduce((a, x) => a + x.total, 0);
+  // Lo gastado sale de los cobros reales (servicios + productos, con descuentos)
+  const gastado = cobros.filter((x) => !x.anulado).reduce((a, x) => a + x.total, 0);
   const noVino = citas.filter((x) => x.estado === 'no_presentada').length;
   const tel = telefonoWhatsApp(c.telefono);
 
@@ -126,6 +128,14 @@ async function renderFicha(contenedor, id) {
         ${proximas.length ? `<ul>${proximas.map(filaCita).join('')}</ul>` : '<p class="texto-suave">No tiene citas pendientes.</p>'}
         <h2>Historial</h2>
         ${pasadas.length ? `<ul>${pasadas.map(filaCita).join('')}</ul>` : '<p class="texto-suave">Todavía no hay citas anteriores.</p>'}
+        <h2>Cobros</h2>
+        ${cobros.length ? `<ul>${cobros.slice(0, 15).map((x) => `
+          <li><button data-cobro="${x.id}" class="cita-hist ${x.anulado ? 'estado-anulada' : ''}">
+            <time>${esc(textoDiaCorto(x.fecha))} · ${x.hora}</time>
+            <span>${esc(x.lineas.map((l) => (Number(l.cantidad) !== 1 ? `${Number(l.cantidad)}× ` : '') + l.nombre).join(', '))}</span>
+            <b>${euros(x.total)}</b>
+            <em>${x.anulado ? 'Anulado' : esc(textoPagos(x.pagos))}</em>
+          </button></li>`).join('')}</ul>` : '<p class="texto-suave">Todavía no hay cobros.</p>'}
       </section>
 
       <section class="tarjeta datos-extra">
@@ -146,6 +156,8 @@ async function renderFicha(contenedor, id) {
   el.addEventListener('click', async (e) => {
     const citaB = e.target.closest('[data-cita]');
     if (citaB) return abrirDetalleCita(citaB.dataset.cita, recargar);
+    const cobroB = e.target.closest('[data-cobro]');
+    if (cobroB) return abrirDetalleCobro(cobroB.dataset.cobro, recargar);
     const a = e.target.closest('[data-a]')?.dataset.a;
     if (!a) return;
     if (a === 'cita') abrirFormularioCita({ clientaId: c.id, alGuardar: recargar });

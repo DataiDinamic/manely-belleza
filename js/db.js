@@ -27,6 +27,19 @@ function normalizarCita(c) {
     servicios,
     total,
     clienta: c.clientas || c.clienta || null,
+    cobrada: (c.cobros || []).some((x) => !x.anulado),
+  };
+}
+
+function normalizarCobro(c) {
+  const lineas = [...(c.cobro_lineas || [])].sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0));
+  const pagos = [...(c.cobro_pagos || [])];
+  return {
+    ...c,
+    hora: horaCorta(c.hora),
+    total: Number(c.total), subtotal: Number(c.subtotal), descuento: Number(c.descuento || 0),
+    lineas, pagos,
+    clienta: c.clientas || null,
   };
 }
 
@@ -184,9 +197,148 @@ export async function eliminarServicio(id) {
 }
 
 // =====================================================================
+// Productos
+// =====================================================================
+const CAMPOS_PRODUCTO = ['nombre', 'marca', 'categoria', 'codigo', 'precio', 'iva_pct', 'coste', 'stock', 'activo'];
+const num = (v) => (v === null || v === undefined || v === '' ? null : Number(String(v).replace(',', '.')));
+
+export async function listarProductos({ todos = false } = {}) {
+  let filas;
+  if (modo === 'demo') filas = demo.listar('productos');
+  else {
+    let q = sb.from('productos').select('*').eq('negocio_id', N);
+    if (!todos) q = q.eq('activo', true);
+    filas = comprobar(await q.order('nombre'));
+  }
+  if (!todos) filas = filas.filter((x) => x.activo !== false);
+  return filas.sort((a, b) => (a.categoria || '').localeCompare(b.categoria || '', 'es') || a.nombre.localeCompare(b.nombre, 'es'));
+}
+
+export async function guardarProducto(datos) {
+  const fila = limpiar(datos, CAMPOS_PRODUCTO);
+  if (!fila.nombre) throw new Error('Falta el nombre');
+  fila.precio = num(fila.precio) || 0;
+  fila.iva_pct = num(fila.iva_pct) ?? 21;
+  fila.coste = num(fila.coste);
+  fila.stock = fila.stock === null || fila.stock === undefined ? null : parseInt(fila.stock, 10);
+  if (Number.isNaN(fila.stock)) fila.stock = null;
+  if (modo === 'demo') return demo.guardar('productos', { activo: true, ...fila, id: datos.id });
+  if (datos.id) return comprobar(await sb.from('productos').update(fila).eq('id', datos.id).select().single());
+  return comprobar(await sb.from('productos').insert({ ...fila, negocio_id: N }).select().single());
+}
+
+export async function usosProducto(id) {
+  if (modo === 'demo') return demo.leer().cobros.filter((c) => c.cobro_lineas.some((l) => l.producto_id === id)).length;
+  const { count, error } = await sb.from('cobro_lineas').select('id', { count: 'exact', head: true }).eq('producto_id', id);
+  if (error) throw new Error(error.message);
+  return count || 0;
+}
+
+export async function eliminarProducto(id) {
+  if (modo === 'demo') { const d = demo.leer(); d.productos = d.productos.filter((x) => x.id !== id); demo.escribir(d); return; }
+  comprobar(await sb.from('productos').delete().eq('id', id));
+}
+
+// =====================================================================
+// Cobros y caja
+// =====================================================================
+const SELECT_COBRO = '*, cobro_lineas(*), cobro_pagos(*), clientas(id, nombre, apellidos, color, telefono)';
+
+export async function cobrosEntre(desde, hasta) {
+  let filas;
+  if (modo === 'demo') filas = demo.cobrosDonde((c) => c.fecha >= desde && c.fecha <= hasta);
+  else filas = comprobar(await sb.from('cobros').select(SELECT_COBRO).eq('negocio_id', N)
+    .gte('fecha', desde).lte('fecha', hasta).order('fecha').order('hora'));
+  return filas.map(normalizarCobro);
+}
+
+export async function cobrosDeClienta(clientaId) {
+  let filas;
+  if (modo === 'demo') filas = demo.cobrosDonde((c) => c.clienta_id === clientaId).reverse();
+  else filas = comprobar(await sb.from('cobros').select(SELECT_COBRO).eq('clienta_id', clientaId)
+    .order('fecha', { ascending: false }).order('hora', { ascending: false }));
+  return filas.map(normalizarCobro);
+}
+
+export async function obtenerCobro(id) {
+  let fila;
+  if (modo === 'demo') fila = demo.cobrosDonde((c) => c.id === id)[0];
+  else fila = comprobar(await sb.from('cobros').select(SELECT_COBRO).eq('id', id).single());
+  if (!fila) throw new Error('Cobro no encontrado');
+  return normalizarCobro(fila);
+}
+
+// El cobro válido (no anulado) de una cita, o null
+export async function cobroDeCita(citaId) {
+  let filas;
+  if (modo === 'demo') filas = demo.cobrosDonde((c) => c.cita_id === citaId && !c.anulado);
+  else filas = comprobar(await sb.from('cobros').select(SELECT_COBRO).eq('cita_id', citaId).eq('anulado', false).limit(1));
+  return filas.length ? normalizarCobro(filas[0]) : null;
+}
+
+// cobro: { fecha, hora, clienta_id?, cita_id?, descuento, notas }
+// lineas: [{ tipo, servicio_id?, producto_id?, nombre, cantidad, precio_unit, iva_pct }]
+// pagos: [{ metodo, importe }]
+export async function registrarCobro(cobro, lineas, pagos) {
+  if (!lineas.length) throw new Error('Añade al menos un concepto');
+  if (!pagos.length) throw new Error('Elige cómo se ha pagado');
+  if (modo === 'demo') return demo.registrarCobro(cobro, lineas, pagos);
+  return comprobar(await sb.rpc('registrar_cobro', { p_negocio: N, p_cobro: cobro, p_lineas: lineas, p_pagos: pagos }));
+}
+
+export async function anularCobro(id, motivo) {
+  if (modo === 'demo') return demo.anularCobro(id, motivo);
+  comprobar(await sb.rpc('anular_cobro', { p_cobro: id, p_motivo: motivo || '' }));
+}
+
+export async function cierreDe(fecha) {
+  if (modo === 'demo') return structuredClone(demo.leer().cierres.find((c) => c.fecha === fecha) || null);
+  const filas = comprobar(await sb.from('cierres_caja').select('*').eq('negocio_id', N).eq('fecha', fecha).limit(1));
+  return filas[0] || null;
+}
+
+export async function guardarCierre(datos) {
+  const fila = { ...datos };
+  delete fila.id; delete fila.created_at; delete fila.updated_at; delete fila.negocio_id; delete fila.cerrado_por;
+  if (modo === 'demo') {
+    const d = demo.leer();
+    const i = d.cierres.findIndex((c) => c.fecha === fila.fecha);
+    const nuevo = { ...(i >= 0 ? d.cierres[i] : { id: uid() }), ...fila, updated_at: new Date().toISOString() };
+    if (i >= 0) d.cierres[i] = nuevo; else d.cierres.push(nuevo);
+    demo.escribir(d);
+    return structuredClone(nuevo);
+  }
+  return comprobar(await sb.from('cierres_caja').upsert({ ...fila, negocio_id: N }, { onConflict: 'negocio_id,fecha' }).select().single());
+}
+
+export async function reabrirCaja(fecha) {
+  if (modo === 'demo') { const d = demo.leer(); d.cierres = d.cierres.filter((c) => c.fecha !== fecha); demo.escribir(d); return; }
+  comprobar(await sb.from('cierres_caja').delete().eq('negocio_id', N).eq('fecha', fecha));
+}
+
+// =====================================================================
+// Facturas
+// =====================================================================
+export async function emitirFactura(cobroId, tipo, receptor = {}) {
+  if (modo === 'demo') return demo.emitirFactura(cobroId, tipo, receptor);
+  return comprobar(await sb.rpc('emitir_factura', { p_cobro: cobroId, p_tipo: tipo, p_receptor: receptor }));
+}
+
+export async function obtenerFactura(id) {
+  if (modo === 'demo') { const f = demo.leer().facturas.find((x) => x.id === id); if (!f) throw new Error('Factura no encontrada'); return structuredClone(f); }
+  return comprobar(await sb.from('facturas').select('*').eq('id', id).single());
+}
+
+export async function facturaDeCobro(cobroId) {
+  if (modo === 'demo') return structuredClone(demo.leer().facturas.find((x) => x.cobro_id === cobroId) || null);
+  const filas = comprobar(await sb.from('facturas').select('*').eq('cobro_id', cobroId).limit(1));
+  return filas[0] || null;
+}
+
+// =====================================================================
 // Citas
 // =====================================================================
-const SELECT_CITA = '*, cita_servicios(*), clientas(id, nombre, apellidos, color, telefono, preferencias, notas)';
+const SELECT_CITA = '*, cita_servicios(*), clientas(id, nombre, apellidos, color, telefono, preferencias, notas), cobros(id, total, anulado)';
 
 export async function citasEntre(desde, hasta) {
   let filas;
@@ -243,7 +395,12 @@ const demo = {
   leer() {
     try {
       const d = JSON.parse(localStorage.getItem(CLAVE_DEMO));
-      if (d) return d;
+      if (d) {
+        // Datos de demostración de la versión anterior: añadir lo de la caja
+        if (!d.productos) { d.productos = semillaProductos(); d.cobros = []; d.cierres = []; this.escribir(d); }
+        if (!d.facturas) { d.facturas = []; this.escribir(d); }
+        return d;
+      }
     } catch { /* vacío */ }
     const d = semilla();
     this.escribir(d);
@@ -280,7 +437,101 @@ const demo = {
     this.escribir(d);
   },
   unir(d, c) {
-    return { ...c, clientas: d.clientas.find((x) => x.id === c.clienta_id) || null };
+    return {
+      ...c,
+      clientas: d.clientas.find((x) => x.id === c.clienta_id) || null,
+      cobros: (d.cobros || []).filter((x) => x.cita_id === c.id).map((x) => ({ id: x.id, total: x.total, anulado: x.anulado })),
+    };
+  },
+  cobrosDonde(filtro) {
+    const d = this.leer();
+    return structuredClone(d.cobros.filter(filtro)
+      .sort((a, b) => (a.fecha + a.hora).localeCompare(b.fecha + b.hora))
+      .map((c) => ({ ...c, clientas: d.clientas.find((x) => x.id === c.clienta_id) || null })));
+  },
+  registrarCobro(cobro, lineas, pagos) {
+    const d = this.leer();
+    const r2 = (n) => Math.round(Number(n) * 100) / 100;
+    const sub = r2(lineas.reduce((a, l) => a + r2((Number(l.cantidad) || 1) * Number(l.precio_unit)), 0));
+    const desc = r2(cobro.descuento || 0);
+    if (desc < 0 || desc > sub) throw new Error('El descuento no puede ser mayor que el importe');
+    const total = r2(sub - desc);
+    const pagado = r2(pagos.reduce((a, p) => a + Number(p.importe), 0));
+    if (Math.abs(pagado - total) > 0.009) throw new Error(`Los pagos (${pagado} €) no suman el total (${total} €)`);
+    let clienta = cobro.clienta_id || null;
+    if (cobro.cita_id) {
+      if (d.cobros.some((c) => c.cita_id === cobro.cita_id && !c.anulado)) throw new Error('Esta cita ya está cobrada');
+      const cita = d.citas.find((c) => c.id === cobro.cita_id);
+      clienta = clienta || cita?.clienta_id || null;
+      if (cita && ['pendiente', 'confirmada'].includes(cita.estado)) cita.estado = 'realizada';
+    }
+    const id = uid();
+    d.cobros.push({
+      id, fecha: cobro.fecha, hora: (cobro.hora || '00:00').slice(0, 5) + ':00', clienta_id: clienta, cita_id: cobro.cita_id || null,
+      subtotal: sub, descuento: desc, total, notas: cobro.notas || null, anulado: false, created_at: new Date().toISOString(),
+      cobro_lineas: lineas.map((l, i) => ({ id: uid(), ...l, cantidad: Number(l.cantidad) || 1, importe: r2((Number(l.cantidad) || 1) * Number(l.precio_unit)), orden: i })),
+      cobro_pagos: pagos.filter((p) => Number(p.importe) > 0).map((p) => ({ id: uid(), metodo: p.metodo, importe: r2(p.importe) })),
+    });
+    for (const l of lineas) {
+      const pr = l.producto_id && d.productos.find((x) => x.id === l.producto_id);
+      if (pr && pr.stock !== null && pr.stock !== undefined) pr.stock -= Math.round(Number(l.cantidad) || 1);
+    }
+    this.escribir(d);
+    return id;
+  },
+  emitirFactura(cobroId, tipo, receptor) {
+    const d = this.leer();
+    const c = d.cobros.find((x) => x.id === cobroId);
+    if (!c) throw new Error('Cobro no encontrado');
+    if (c.anulado) throw new Error('No se puede facturar un cobro anulado');
+    if (d.facturas.some((f) => f.cobro_id === cobroId)) throw new Error('Este cobro ya tiene factura');
+    const n = d.negocio;
+    if (!n.nif || !(n.razon_social || n.nombre)) throw new Error('Faltan los datos fiscales del centro (titular y NIF) en Ajustes');
+    if (tipo === 'completa') {
+      if (!n.direccion) throw new Error('Falta la dirección del centro en Ajustes');
+      if (!receptor?.nombre || !receptor?.nif || !receptor?.direccion) throw new Error('Para una factura completa hacen falta nombre, NIF y dirección de la clienta');
+    }
+    const r2 = (x) => Math.round(x * 100) / 100;
+    const factor = c.subtotal > 0 ? c.total / c.subtotal : 0;
+    let resto = c.total;
+    const lineas = c.cobro_lineas.map((l, i, arr) => {
+      const imp = i === arr.length - 1 ? r2(resto) : r2(l.importe * factor);
+      resto = r2(resto - imp);
+      const base = r2(imp / (1 + Number(l.iva_pct) / 100));
+      return { nombre: l.nombre, cantidad: l.cantidad, precio_unit: l.precio_unit, importe_bruto: l.importe, importe: imp, iva_pct: Number(l.iva_pct), base, cuota: r2(imp - base) };
+    });
+    const grupos = {};
+    for (const l of lineas) { const g = (grupos[l.iva_pct] ||= { iva_pct: l.iva_pct, base: 0, cuota: 0 }); g.base = r2(g.base + l.base); g.cuota = r2(g.cuota + l.cuota); }
+    const hoy = hoyISO();
+    const serie = tipo === 'completa' ? 'F' : 'T';
+    const anio = Number(hoy.slice(0, 4));
+    const numero = d.facturas.filter((f) => f.serie === serie && f.anio === anio).reduce((m, f) => Math.max(m, f.numero), 0) + 1;
+    const f = {
+      id: uid(), cobro_id: cobroId, tipo, serie, anio, numero, codigo: `${serie}${anio}-${String(numero).padStart(4, '0')}`,
+      fecha: hoy, fecha_operacion: c.fecha,
+      emisor: { nombre: n.nombre, razon_social: n.razon_social || n.nombre, nif: n.nif, direccion: n.direccion, cp: n.cp, poblacion: n.poblacion, provincia: n.provincia, telefono: n.telefono, email: n.email },
+      receptor: tipo === 'completa' ? receptor : null,
+      lineas, desglose_iva: Object.values(grupos).sort((a, b) => b.iva_pct - a.iva_pct),
+      base_total: r2(lineas.reduce((a, l) => a + l.base, 0)), cuota_total: r2(lineas.reduce((a, l) => a + l.cuota, 0)), total: c.total,
+      created_at: new Date().toISOString(),
+    };
+    d.facturas.push(f);
+    this.escribir(d);
+    return f.id;
+  },
+  anularCobro(id, motivo) {
+    const d = this.leer();
+    const c = d.cobros.find((x) => x.id === id);
+    if (!c) throw new Error('Cobro no encontrado');
+    if (c.anulado) throw new Error('Este cobro ya estaba anulado');
+    const fac = (d.facturas || []).find((f) => f.cobro_id === id);
+    if (fac) throw new Error(`Este cobro tiene la factura ${fac.codigo}. Para anularlo hace falta una factura rectificativa (aún no disponible): consúltalo con el gestor.`);
+    Object.assign(c, { anulado: true, motivo_anulacion: motivo || null, anulado_en: new Date().toISOString() });
+    for (const l of c.cobro_lineas) {
+      const pr = l.producto_id && d.productos.find((x) => x.id === l.producto_id);
+      if (pr && pr.stock !== null && pr.stock !== undefined) pr.stock += Math.round(Number(l.cantidad) || 1);
+    }
+    this.escribir(d);
   },
   citasEntre(desde, hasta) {
     const d = this.leer();
@@ -312,6 +563,17 @@ const demo = {
     return id;
   },
 };
+
+function semillaProductos() {
+  const p = (nombre, marca, categoria, precio, stock) => ({ id: uid(), nombre, marca, categoria, precio, iva_pct: 21, stock, activo: true });
+  return [
+    p('Esmalte semipermanente rojo cereza', 'OPI', 'Esmaltes', 14.5, 6),
+    p('Esmalte nude rosado', 'Essie', 'Esmaltes', 11, 4),
+    p('Aceite de cutícula', 'CND', 'Cuidado', 9.9, 10),
+    p('Crema de manos 75 ml', 'Mavala', 'Cuidado', 12, null),
+    p('Lima de cristal', '', 'Accesorios', 6, 2),
+  ];
+}
 
 function semilla() {
   const s = (nombre, categoria, duracion_min, precio, orden) => ({ id: uid(), nombre, categoria, duracion_min, precio, iva_pct: 21, activo: true, orden });
@@ -349,6 +611,10 @@ function semilla() {
     negocio: { id: 'demo', nombre: CONFIG.NOMBRE_NEGOCIO, poblacion: 'Chiclana de la Frontera', provincia: 'Cádiz' },
     servicios,
     clientas,
+    productos: semillaProductos(),
+    cobros: [],
+    cierres: [],
+    facturas: [],
     citas: [
       cita(clientas[0], hoy, '10:00', [servicios[0], servicios[5]]),
       cita(clientas[1], hoy, '11:15', [servicios[6]]),
