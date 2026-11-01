@@ -1,7 +1,7 @@
 // Service worker: guarda la "carcasa" de la app para que abra rápido.
 // Los datos (Supabase) nunca se guardan en caché.
 // Al publicar cambios, sube el número de VERSION.
-const VERSION = 'mb-0.6.0';
+const VERSION = 'mb-0.6.1';
 const CARCASA = [
   './', './index.html', './manifest.webmanifest', './css/app.css',
   './js/app.js', './js/config.js', './js/db.js', './js/util.js', './js/fechas.js', './js/pin.js',
@@ -45,7 +45,7 @@ self.addEventListener('fetch', (e) => {
 // Al tocar una notificación de aviso: abrir (o traer delante) la app
 self.addEventListener('notificationclick', (e) => {
   e.notification.close();
-  const destino = new URL(e.notification.data?.url || './#secretaria', self.registration.scope).href;
+  const destino = new URL(e.notification.data?.url || './#avisos', self.registration.scope).href;
   e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((lista) => {
     const abierta = lista.find((c) => c.url.startsWith(self.registration.scope));
     if (abierta) return abierta.focus();

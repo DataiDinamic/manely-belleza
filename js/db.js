@@ -389,11 +389,11 @@ export async function borrarMovimiento(id) {
 // Secretaria: gastos fijos y obligaciones que se repiten
 // =====================================================================
 const CAMPOS_OBLIGACION = ['nombre', 'tipo', 'categoria', 'proveedor', 'importe', 'repeticion', 'cada', 'fecha_inicio', 'fecha_fin',
-  'hora', 'aviso_cantidad', 'aviso_unidad', 'notas', 'activo'];
+  'hora', 'aviso_cantidad', 'aviso_unidad', 'notas', 'activo', 'dia', 'recordar'];
 
 function normalizarObligacion(o) {
   return { ...o, importe: o.importe === null || o.importe === undefined ? null : Number(o.importe), cada: Number(o.cada) || 1,
-    hora: horaCorta(o.hora || '10:00'), aviso_cantidad: o.aviso_cantidad === null || o.aviso_cantidad === undefined ? null : Number(o.aviso_cantidad) };
+    hora: horaCorta(o.hora || '10:00'), dia: o.dia ? Number(o.dia) : null, recordar: o.recordar === 'no' ? 'no' : 'cada_dia', aviso_cantidad: o.aviso_cantidad === null || o.aviso_cantidad === undefined ? null : Number(o.aviso_cantidad) };
 }
 
 export async function listarObligaciones() {
@@ -409,7 +409,9 @@ export async function guardarObligacion(datos) {
   if (!fila.nombre) throw new Error('Falta el nombre');
   if (!fila.fecha_inicio) throw new Error('Falta la fecha');
   fila.tipo = fila.tipo === 'tarea' ? 'tarea' : 'gasto';
-  fila.importe = fila.tipo === 'gasto' ? num(fila.importe) : null;
+  fila.importe = num(fila.importe);
+  fila.dia = num(fila.dia);
+  fila.recordar = fila.recordar === 'no' ? 'no' : 'cada_dia';
   fila.cada = Math.max(1, Math.round(num(fila.cada) || 1));
   fila.repeticion = fila.repeticion || 'meses';
   fila.fecha_fin = fila.fecha_fin || null;
@@ -529,6 +531,12 @@ export async function guardarCita(cita, servicios) {
   if (!servicios.length) throw new Error('Añade al menos un servicio');
   if (modo === 'demo') return demo.guardarCita(cita, servicios);
   return comprobar(await sb.rpc('guardar_cita', { p_negocio: N, p_cita: cita, p_servicios: servicios }));
+}
+
+export async function cambiarAvisoCita(id, avisoMin) {
+  const cambios = { aviso_min: avisoMin === '' || avisoMin === null || avisoMin === undefined ? null : Number(avisoMin) };
+  if (modo === 'demo') return demo.actualizar('citas', id, cambios);
+  comprobar(await sb.from('citas').update(cambios).eq('id', id));
 }
 
 export async function cambiarEstadoCita(id, estado, motivo = null) {
@@ -772,20 +780,24 @@ function semillaInventario() {
 function semillaSecretaria() {
   const hoy = hoyISO();
   const mes = (dia, n = 0) => { const d = desdeISO(hoy); d.setDate(1); d.setMonth(d.getMonth() + n); d.setDate(dia); return isoDe(d); };
-  const o = (nombre, tipo, categoria, proveedor, importe, repeticion, cada, fecha_inicio, hora, aviso_cantidad, aviso_unidad, notas = '') =>
-    ({ id: uid(), nombre, tipo, categoria, proveedor, importe, repeticion, cada, fecha_inicio, fecha_fin: null, hora, aviso_cantidad, aviso_unidad, notas, activo: true });
+  const o = (nombre, importe, proveedor, repeticion, cada, fecha_inicio, dia, aviso_cantidad, aviso_unidad, recordar, notas = '') =>
+    ({ id: uid(), nombre, tipo: importe ? 'gasto' : 'tarea', categoria: null, proveedor, importe, repeticion, cada, fecha_inicio, dia, fecha_fin: null,
+      hora: '10:00', aviso_cantidad, aviso_unidad, recordar, notas, activo: true });
   const obligaciones = [
-    o('Alquiler del local', 'gasto', 'Local', 'Carolina Marín', 250, 'meses', 1, mes(1, -3), '10:00', 3, 'dias', 'Por transferencia'),
-    o('Luz', 'gasto', 'Suministros', 'Endesa', 60, 'meses', 1, mes(12, -3), '10:00', 1, 'semanas', 'Domiciliada: comprobar el cargo'),
-    o('Cuota de autónomos', 'gasto', 'Impuestos y cuotas', 'Seguridad Social', 230, 'meses', 1, mes(28, -3), '10:00', 2, 'dias'),
-    o('Teléfono e internet', 'gasto', 'Suministros', 'Movistar', 35, 'meses', 1, mes(20, -3), '10:00', 2, 'dias'),
-    o('Llevar los papeles al gestor', 'tarea', 'Gestoría', 'Gestoría', null, 'meses', 3, '2026-01-05', '10:00', 1, 'semanas', 'Facturas, tickets de compra y el informe del trimestre'),
+    o('Alquiler del local', 250, 'Carolina Marín', 'meses', 1, mes(1, -3), 1, 3, 'dias', 'cada_dia', 'Por transferencia'),
+    o('Luz', 60, 'Endesa', 'meses', 1, mes(12, -3), 12, 1, 'semanas', 'no', 'Domiciliada: comprobar el cargo'),
+    o('Cuota de autónomos', 230, 'Seguridad Social', 'meses', 1, mes(28, -3), 28, 2, 'dias', 'no'),
+    o('Teléfono e internet', 35, 'Movistar', 'meses', 1, mes(20, -3), 20, 2, 'dias', 'no'),
+    o('Llevar los papeles al gestor', null, 'Gestoría', 'meses', 3, '2026-01-01', 1, 1, 'semanas', 'cada_dia', 'Facturas, tickets de compra y el informe del trimestre'),
+    o('Seguro del local', 180, 'Mapfre', 'anios', 1, '2026-03-15', 15, 2, 'semanas', 'cada_dia'),
+    o('Lámpara de mesa', 45.9, 'Ikea', 'una_vez', 1, mes(Math.max(1, Number(hoy.slice(8)) - 1)), null, null, 'dias', 'no'),
   ];
   const registros = [];
   const pagado = (ob, n, importe) => registros.push({ id: uid(), obligacion_id: ob.id, fecha_prevista: mes(Number(ob.fecha_inicio.slice(8)), n),
     fecha: mes(Number(ob.fecha_inicio.slice(8)), n), estado: 'hecho', importe, notas: null, created_at: new Date().toISOString() });
   for (const n of [-3, -2, -1]) { pagado(obligaciones[0], n, 250); pagado(obligaciones[2], n, 230); pagado(obligaciones[3], n, 35); }
   pagado(obligaciones[1], -3, 54.2); pagado(obligaciones[1], -2, 61.8); pagado(obligaciones[1], -1, 66.35);
+  registros.push({ id: uid(), obligacion_id: obligaciones[6].id, fecha_prevista: obligaciones[6].fecha_inicio, fecha: obligaciones[6].fecha_inicio, estado: 'hecho', importe: 45.9, notas: null, created_at: new Date().toISOString() });
   return { obligaciones, registros };
 }
 

@@ -1,4 +1,4 @@
-# Manely Belleza · app de gestión (alfa 0.6)
+# Manely Belleza · app de gestión (alfa 0.6.1)
 
 Agenda, clientas y servicios. Funciona en móvil, tablet y ordenador, y se instala como app desde el navegador.
 
@@ -87,25 +87,21 @@ En **Catálogo → Inventario**, el material que se gasta y no se cobra (algodon
 - En la ficha de cada artículo: consumo medio al mes (cantidad y euros), para cuántos días queda y todos sus movimientos (se puede borrar uno mal apuntado y el stock se recalcula).
 - **Lista de la compra** con lo que está por debajo del mínimo, agrupada por proveedor, para enviar por WhatsApp o copiar.
 
-## Versión 0.6: Secretaria y avisos
+## Versión 0.6.1: Avisos
 
-**Instalación:** ejecutar `supabase/005_secretaria.sql` en el SQL Editor (añade dos tablas y el campo de aviso de las citas; no borra nada) y subir los archivos.
+**Instalación:** ejecutar `supabase/005_secretaria.sql` en el SQL Editor (si ya se ejecutó con la 0.6, ejecutarlo otra vez: añade dos campos; no borra nada) y subir los archivos.
 
-Sección nueva **Secretaria** (campanita en el menú), para lo que no tiene que ver con las clientas:
-- **Gastos y obligaciones que se repiten**: alquiler, luz, cuota de autónomos, teléfono, seguro, llevar los papeles al gestor… Cada uno es un **gasto** (se paga, con importe aproximado) o una **tarea** (hay que hacerla). Se repite cada N días, semanas, meses o años (cada 3 meses = trimestral), o una sola vez. Hay ejemplos para rellenar con un toque.
-- **Aviso** con la antelación que se quiera (minutos, horas, días o semanas antes) y otro aviso el mismo día a su hora.
-- **Próximo**: lo atrasado, lo de hoy, los próximos 7 días y más adelante. Botón **Pagado / Hecho** para apuntar el importe real (la luz cambia cada mes) o **Saltar esta vez**.
-- **Todo**: la lista completa por categorías. En la ficha, próximas fechas, historial de pagos y media real.
-- **Pagado**: lo pagado mes a mes con el **total del mes y del trimestre**, para el gestor.
-- **Gasto suelto**: un gasto que no se repite (una lámpara, un curso…).
-- Arriba: gastos fijos del mes, pagado, lo que falta por pagar y lo atrasado. El número rojo del menú indica cuántas cosas están avisando.
+Sección **Avisos** (campanita en el menú), para lo que no tiene que ver con las clientas: alquiler, luz, cuota de autónomos, papeles al gestor, un curso…
+- Pestañas por periodo: **Total** (todo), **Año**, **Trimestre**, **Mes**, **Semana**, **Día** y **Puntual** (una sola vez). En cada una, sus avisos y el botón **Gasto nuevo**.
+- En el formulario se elige el periodo y **cuándo toca**: el día y el mes (año), el día y el mes del trimestre (p. ej. el día 1 de enero, abril, julio y octubre), el día del mes (el 31 cae el 30 en los meses de 30 días), el día de la semana o la fecha (puntual), y la hora.
+- **Aviso** con la antelación que se quiera (minutos, horas, días o semanas antes) y después **recordar cada día hasta marcarlo** o **no recordar más**.
+- Importe opcional. Con importe, el botón es **Pagado** (se apunta lo pagado de verdad); sin importe, **Hecho**. También **Saltar esta vez**.
+- Un gasto puntual ya pagado (una lámpara, un curso) se apunta marcando **Ya está pagado o hecho**.
+- Arriba: gastos fijos del mes, **pagado este mes** (al tocarlo, lo pagado mes a mes con el **total del trimestre** para el gestor), lo que falta por pagar y lo atrasado. El número rojo del menú indica cuántas cosas están avisando.
 
-**Avisos con sonido** (campanita y vibración), que se pueden posponer 10 minutos:
-- De la Secretaria, con su antelación.
-- De las **citas**: al crear o editar una cita hay un campo **Avisar** (sin aviso, 5 min… 1 día antes). El valor por defecto para las citas nuevas se elige en *Ajustes → Avisos*.
-- Suenan **mientras la app está abierta**, también en segundo plano o con la pantalla bloqueada por el PIN (en ese caso sin botones de acción). Si la app está cerrada del todo, el aviso sale al abrirla. Conviene dejarla abierta en la tablet del salón.
-- En *Ajustes → Avisos*: activar o no en cada dispositivo, sonido, **Probar aviso** y permitir las notificaciones del sistema.
-- Avisos con la app cerrada (notificaciones push): próxima versión, con un servidor de notificaciones en Supabase.
+**Aviso previo en las citas**: en la ficha de la cita, botón **Aviso previo** (sin aviso, 5 min, 15 min, 30 min, 1 hora o 24 horas); también al crear o editar la cita. Por defecto, sin aviso.
+
+**Cómo suenan los avisos**: campanita y vibración, hasta 3 veces, y se pueden posponer 10 minutos. Suenan **mientras la app está abierta**, también en segundo plano o con la pantalla bloqueada por el PIN (en ese caso sin botones de acción). Si la app está cerrada del todo, el aviso sale al abrirla: conviene dejarla abierta en la tablet del salón. En *Ajustes → Avisos*: activar o no en cada dispositivo, sonido, **Probar aviso** y notificaciones del sistema. Avisos con la app cerrada (push): próxima versión.
 
 ## Límites del plan gratuito de Supabase
 
@@ -130,12 +126,12 @@ js/ics.js               lectura de calendarios .ics (Google Calendar)
 js/importar.js          pantalla de importación de citas
 js/avisos.js            avisos: fechas que se repiten, sonido y notificaciones
 js/fechas.js            fechas en hora local (sin desfases)
-js/vistas/*.js          agenda, caja, clientas, catálogo (servicios, productos, inventario), secretaria, ajustes
+js/vistas/*.js          agenda, caja, clientas, catálogo (servicios, productos, inventario), avisos (secretaria.js), ajustes
 supabase/001_fase1.sql  tablas, reglas de seguridad y funciones (fase 1)
 supabase/002_fase2_caja.sql  productos, cobros y cierres de caja (fase 2)
 supabase/003_facturas.sql    facturas con numeración correlativa (0.3)
 supabase/004_inventario.sql  inventario de material (0.5)
-supabase/005_secretaria.sql  gastos fijos, obligaciones y avisos (0.6)
+supabase/005_secretaria.sql  avisos: gastos y obligaciones que se repiten (0.6)
 sw.js, manifest         instalación como app
 ```
 

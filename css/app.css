@@ -915,3 +915,32 @@ body.con-tpv { overflow: hidden; }
 .alarma-texto small { display: block; margin-top: 4px; color: var(--suave); }
 .alarma-botones { grid-column: 1 / -1; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; margin-top: 6px; }
 @media (prefers-reduced-motion: reduce) { .alarmas, .alarma-icono { animation: none; } }
+
+/* ---------- Avisos 0.6.1 ---------- */
+.pestanas-avisos { overflow-x: auto; scrollbar-width: none; flex-wrap: nowrap; }
+.pestanas-avisos::-webkit-scrollbar { display: none; }
+.pestanas-avisos a { white-space: nowrap; flex: none; }
+.pestanas-avisos small { display: inline-block; min-width: 20px; padding: 0 6px; margin-left: 2px; border-radius: 999px; background: var(--lavanda); color: var(--violeta-osc); font-size: .75rem; text-align: center; }
+.av-acciones { display: flex; justify-content: flex-end; margin: -4px 0 12px; }
+.tile-boton { text-align: left; font: inherit; color: inherit; cursor: pointer; }
+.tile-boton small { color: var(--violeta) !important; font-weight: 600; }
+.tile-boton:hover { border-color: #CDB8EC !important; }
+.etiqueta-periodo { font-style: normal; font-size: .72rem; font-weight: 700; padding: 1px 7px; margin-left: 4px; border-radius: 999px; background: var(--lavanda); color: var(--violeta-osc); vertical-align: 2px; }
+.fila-sec.hecha .sec-fecha { background: var(--exito-fondo); color: var(--exito); }
+.periodos { display: flex; flex-wrap: wrap; }
+.periodos label { cursor: pointer; flex: 1 0 auto; }
+.periodos input { position: absolute; opacity: 0; }
+.periodos span { display: flex; align-items: center; justify-content: center; min-height: 40px; padding: 0 12px; border-radius: 7px; font-weight: 600; color: var(--suave); }
+.periodos input:checked + span { background: var(--tinta); color: #fff; }
+.periodos input:focus-visible + span { outline: 3px solid var(--violeta); }
+.cuando { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+.cuando > .solo-anio, .cuando > .solo-trimestre, .cuando > .solo-semana, .cuando > .solo-puntual, .cuando > .con-dia { display: none; }
+.form-sec[data-periodo="anio"] .solo-anio, .form-sec[data-periodo="trimestre"] .solo-trimestre, .form-sec[data-periodo="semana"] .solo-semana,
+.form-sec[data-periodo="puntual"] .solo-puntual,
+.form-sec[data-periodo="anio"] .con-dia, .form-sec[data-periodo="trimestre"] .con-dia, .form-sec[data-periodo="mes"] .con-dia { display: flex; }
+.boton-aviso { width: 100%; justify-content: flex-start; margin: 4px 0 12px; }
+.boton-aviso.con-aviso { background: var(--lavanda-2); border-color: #CDB8EC; color: var(--violeta-osc); }
+.opciones-aviso { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin: 12px 0 4px; }
+.opciones-aviso .btn { min-height: 52px; }
+.ya-hecho[hidden] { display: none; }
+.inv-resumen > .tile-boton { background: var(--papel); border: 1px solid var(--linea); border-radius: 14px; padding: 12px 14px; display: block; }

@@ -4,9 +4,9 @@ import { esc, euros, nombreCompleto, abrirHoja, confirmar, pedirTexto, aviso, er
   telefonoWhatsApp, esmalteAleatorio, cargando } from './util.js';
 import { hoyISO, aMinutos, aHora, textoDiaLargo, duracionTexto, horaCorta } from './fechas.js';
 import { abrirCobro, abrirDetalleCobro, textoPagos } from './caja.js';
-import { ajustesAvisos, textoMinutosAntes } from './avisos.js';
+import { textoMinutosAntes } from './avisos.js';
 
-const OPCIONES_AVISO = [null, 5, 10, 15, 30, 45, 60, 120, 180, 1440];
+const OPCIONES_AVISO = [null, 5, 15, 30, 60, 1440];
 const cambioDatos = () => window.dispatchEvent(new Event('mb:datos'));
 
 export const ESTADOS = {
@@ -46,9 +46,8 @@ export async function abrirFormularioCita({ cita = null, fecha = hoyISO(), hora 
       `<option value="${s.id}">${esc(s.nombre)} · ${duracionTexto(s.duracion_min)} · ${euros(s.precio)}</option>`).join('')}</optgroup>`).join('');
 
   const titulo = cita ? 'Editar cita' : copiarDe ? 'Repetir cita' : 'Nueva cita';
-  // Aviso previo: el de la cita o, si es nueva, el de Ajustes de este dispositivo
-  const porDefecto = ajustesAvisos().citaPorDefecto;
-  const avisoInicial = cita ? (cita.aviso_min ?? null) : (porDefecto === '' || porDefecto === null || porDefecto === undefined ? null : Number(porDefecto));
+  // Aviso previo: sin aviso salvo que se elija (al repetir una cita se copia el suyo)
+  const avisoInicial = (cita || copiarDe)?.aviso_min ?? null;
   const opcionesAviso = OPCIONES_AVISO.includes(avisoInicial) ? OPCIONES_AVISO : [...OPCIONES_AVISO, avisoInicial].sort((a, b) => (a ?? -1) - (b ?? -1));
   const { el, cerrar } = abrirHoja(`
     <form class="form-cita" novalidate>
@@ -82,7 +81,7 @@ export async function abrirFormularioCita({ cita = null, fecha = hoyISO(), hora 
         <div class="fila-2">
           <label class="campo"><span>Duración (min)</span>
             <input type="number" name="duracion" min="5" max="720" step="5" inputmode="numeric"></label>
-          <label class="campo"><span>Avisar</span>
+          <label class="campo"><span>Aviso previo</span>
             <select name="aviso_min">${opcionesAviso.map((m) =>
               `<option value="${m ?? ''}" ${m === avisoInicial ? 'selected' : ''}>${textoMinutosAntes(m)}</option>`).join('')}</select></label>
         </div>
@@ -305,7 +304,7 @@ export async function abrirDetalleCita(id, alCambiar) {
         <p class="detalle-cuando">${esc(textoDiaLargo(c.fecha))} · ${c.hora}–${aHora(c.fin)}</p>
         <h2 class="hoja-titulo">${cl ? `<a href="#clientas/${cl.id}" data-cerrar>${esc(nombreCompleto(cl))}</a>` : 'Clienta eliminada'}</h2>
         <span class="estado estado-${c.estado}">${ESTADOS[c.estado]}</span>
-        ${c.aviso_min !== null && c.aviso_min !== undefined && activa ? `<span class="aviso-cita">🔔 ${esc(textoMinutosAntes(c.aviso_min))}</span>` : ''}
+
       </div>
       <button type="button" class="btn-icono" data-cerrar aria-label="Cerrar">✕</button>
     </header>
@@ -321,6 +320,8 @@ export async function abrirDetalleCita(id, alCambiar) {
       ${cl?.notas ? `<p class="detalle-notas"><strong>Sobre la clienta:</strong> ${esc(cl.notas)}</p>` : ''}
       ${c.estado === 'anulada' && c.motivo_anulacion ? `<p class="detalle-notas"><strong>Motivo de anulación:</strong> ${esc(c.motivo_anulacion)}</p>` : ''}
 
+      ${activa ? `<button type="button" class="btn boton-aviso ${c.aviso_min !== null && c.aviso_min !== undefined ? 'con-aviso' : ''}" data-aviso>
+        🔔 Aviso previo: <b>${esc(textoMinutosAntes(c.aviso_min ?? null))}</b></button>` : ''}
       ${cl?.telefono ? `<div class="contacto">
         <a class="btn" href="tel:${esc(cl.telefono.replace(/\s/g, ''))}">Llamar</a>
         ${tel ? `<a class="btn" target="_blank" rel="noopener" href="https://wa.me/${tel}?text=${recordatorio}">Recordar por WhatsApp</a>` : ''}
@@ -336,6 +337,20 @@ export async function abrirDetalleCita(id, alCambiar) {
       ${activa ? '<button class="btn btn-peligro-suave" data-a="anular">Anular</button>' : ''}
       ${!activa && !c.cobrada ? '<button class="btn" data-a="pendiente">Volver a pendiente</button>' : ''}
     </footer>`, { ancho: 'normal' });
+
+  el.querySelector('[data-aviso]')?.addEventListener('click', async (e) => {
+    const boton = e.currentTarget;
+    const elegido = await elegirAviso(c.aviso_min ?? null);
+    if (elegido === undefined) return;
+    try {
+      await db.cambiarAvisoCita(c.id, elegido);
+      c.aviso_min = elegido;
+      boton.querySelector('b').textContent = textoMinutosAntes(elegido);
+      boton.classList.toggle('con-aviso', elegido !== null);
+      aviso(elegido === null ? 'Sin aviso previo' : `Avisará ${textoMinutosAntes(elegido).toLowerCase()}`);
+      cambioDatos();
+    } catch (err) { errorAviso(err, 'No se pudo cambiar el aviso'); }
+  });
 
   el.addEventListener('click', async (e) => {
     const b = e.target.closest('[data-a]');
@@ -365,6 +380,23 @@ export async function abrirDetalleCita(id, alCambiar) {
       cerrar();
       alCambiar?.();
     } catch (err) { errorAviso(err); }
+  });
+}
+
+// Elegir el aviso previo de una cita. Devuelve los minutos, null (sin aviso) o undefined (cancelado)
+function elegirAviso(actual) {
+  return new Promise((resolve) => {
+    let hecho = false;
+    const { el, cerrar } = abrirHoja(`
+      <div class="hoja-cuerpo">
+        <h2 class="hoja-titulo">Aviso previo</h2>
+        <div class="opciones-aviso">${OPCIONES_AVISO.map((m) => `<button type="button" class="btn ${m === actual ? 'btn-principal' : ''}" data-min="${m ?? ''}">${textoMinutosAntes(m).replace(' antes', '')}</button>`).join('')}</div>
+        <div class="hoja-pie sin-borde"><button type="button" class="btn" data-cerrar>Cancelar</button></div>
+      </div>`, { ancho: 'estrecha', alCerrar: () => { if (!hecho) resolve(undefined); } });
+    el.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-min]'); if (!b) return;
+      hecho = true; resolve(b.dataset.min === '' ? null : Number(b.dataset.min)); cerrar();
+    });
   });
 }
 

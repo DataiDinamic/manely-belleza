@@ -1,5 +1,5 @@
 -- =====================================================================
--- Manely Belleza · Secretaria (versión 0.6)
+-- Manely Belleza · Avisos (versión 0.6)
 -- Gastos fijos y obligaciones del negocio (luz, alquiler, cuota de
 -- autónomos, papeles al gestor…) que se repiten, con su aviso previo,
 -- y aviso previo en las citas.
@@ -105,6 +105,13 @@ create table if not exists public.obligaciones (
   updated_at     timestamptz not null default now()
 );
 create index if not exists obligaciones_negocio_idx on public.obligaciones (negocio_id, activo);
+
+-- Día elegido del mes (el 31 se respeta en los meses que lo tienen) y si se
+-- recuerda cada día hasta marcarlo como hecho o se avisa una sola vez
+alter table public.obligaciones add column if not exists dia integer check (dia is null or dia between 1 and 31);
+alter table public.obligaciones add column if not exists recordar text not null default 'cada_dia';
+alter table public.obligaciones drop constraint if exists obligaciones_recordar_check;
+alter table public.obligaciones add constraint obligaciones_recordar_check check (recordar in ('no','cada_dia'));
 
 drop trigger if exists obligaciones_updated on public.obligaciones;
 create trigger obligaciones_updated before update on public.obligaciones

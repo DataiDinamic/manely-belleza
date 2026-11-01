@@ -1,5 +1,5 @@
-// La «secretaria»: calcula las fechas de los gastos y obligaciones que se
-// repiten, y avisa con sonido de lo que toca (y de las citas con aviso).
+// Avisos: calcula las fechas de los gastos y obligaciones que se repiten
+// y avisa con sonido de lo que toca (y de las citas con aviso previo).
 // Funciona mientras la app está abierta (también en segundo plano o en otra
 // pestaña). Con la app cerrada, el aviso salta al volver a abrirla.
 import * as db from './db.js';
@@ -12,11 +12,12 @@ import { hoyISO, sumarDias, isoDe, textoDiaLargo, horaCorta } from './fechas.js'
 const diasEntre = (a, b) => Math.round((Date.UTC(...ymd(b)) - Date.UTC(...ymd(a))) / 864e5);
 function ymd(iso) { const [y, m, d] = iso.split('-').map(Number); return [y, m - 1, d]; }
 
-// Suma meses sin pasarse de mes: 31 de enero + 1 mes = 28 (o 29) de febrero
-function sumarMesesDia(iso, n) {
+// Suma meses sin pasarse de mes: el día 31 en noviembre es el 30.
+// «dia» es el día elegido (el 31 sigue siendo 31 en los meses que lo tienen).
+function sumarMesesDia(iso, n, dia) {
   const [y, m, d] = ymd(iso);
   const ultimo = new Date(y, m + n + 1, 0).getDate();
-  return isoDe(new Date(y, m + n, Math.min(d, ultimo)));
+  return isoDe(new Date(y, m + n, Math.min(dia || d, ultimo)));
 }
 
 // La k-ésima fecha (0 = la primera)
@@ -26,8 +27,8 @@ export function fechaNumero(o, k) {
     case 'una_vez': return k === 0 ? ini : null;
     case 'dias': return sumarDias(ini, n);
     case 'semanas': return sumarDias(ini, 7 * n);
-    case 'anios': return sumarMesesDia(ini, 12 * n);
-    default: return sumarMesesDia(ini, n);
+    case 'anios': return sumarMesesDia(ini, 12 * n, o.dia);
+    default: return sumarMesesDia(ini, n, o.dia);
   }
 }
 
@@ -58,25 +59,47 @@ export function proximaFecha(o, desde = hoyISO()) {
 }
 
 const UNIDADES_AVISO = { minutos: ['minuto', 'minutos'], horas: ['hora', 'horas'], dias: ['día', 'días'], semanas: ['semana', 'semanas'] };
-export function textoAntelacion(cantidad, unidad) {
+export function textoAntelacion(cantidad, unidad, recordar) {
   if (cantidad === null || cantidad === undefined || cantidad === '') return 'sin aviso';
-  if (Number(cantidad) === 0) return 'aviso a la hora';
   const [s, p] = UNIDADES_AVISO[unidad] || UNIDADES_AVISO.dias;
-  return `aviso ${cantidad} ${Number(cantidad) === 1 ? s : p} antes`;
+  const base = Number(cantidad) === 0 ? 'aviso a la hora' : `aviso ${cantidad} ${Number(cantidad) === 1 ? s : p} antes`;
+  if (recordar === undefined) return base;
+  return `${base} · ${recordar === 'no' ? 'una sola vez' : 'recuerda cada día'}`;
 }
 export function textoMinutosAntes(min) {
   if (min === null || min === undefined) return 'Sin aviso';
   if (min === 0) return 'A la hora de la cita';
-  if (min % 1440 === 0) return `${min / 1440} ${min === 1440 ? 'día' : 'días'} antes`;
+  if (min === 1440) return '24 horas antes';
+  if (min % 1440 === 0) return `${min / 1440} días antes`;
   if (min % 60 === 0) return `${min / 60} ${min === 60 ? 'hora' : 'horas'} antes`;
   return `${min} min antes`;
 }
 
 const DIAS_SEMANA = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
 const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
-export function textoRepeticion(o) {
-  const [y, m, d] = ymd(o.fecha_inicio);
+// Periodos de la sección Avisos
+export const PERIODOS = {
+  anio: { nombre: 'Año', repeticion: 'anios', cada: 1 },
+  trimestre: { nombre: 'Trimestre', repeticion: 'meses', cada: 3 },
+  mes: { nombre: 'Mes', repeticion: 'meses', cada: 1 },
+  semana: { nombre: 'Semana', repeticion: 'semanas', cada: 1 },
+  dia: { nombre: 'Día', repeticion: 'dias', cada: 1 },
+  puntual: { nombre: 'Puntual', repeticion: 'una_vez', cada: 1 },
+};
+export function periodoDe(o) {
   const cada = Number(o.cada) || 1;
+  for (const [k, p] of Object.entries(PERIODOS)) if (p.repeticion === o.repeticion && (p.repeticion === 'una_vez' || p.cada === cada)) return k;
+  return 'otro';
+}
+export const NOMBRES_MESES = MESES;
+export const NOMBRES_DIAS = DIAS_SEMANA;
+const TRIMESTRE_MESES = ['enero, abril, julio y octubre', 'febrero, mayo, agosto y noviembre', 'marzo, junio, septiembre y diciembre'];
+
+export function textoRepeticion(o) {
+  const [y, m, d0] = ymd(o.fecha_inicio);
+  const d = o.dia || d0;
+  const cada = Number(o.cada) || 1;
+  if (o.repeticion === 'meses' && cada === 3) return `Cada trimestre, el día ${d} (${TRIMESTRE_MESES[m % 3]})`;
   switch (o.repeticion) {
     case 'una_vez': return `Una vez, el ${d} de ${MESES[m]} de ${y}`;
     case 'dias': return cada === 1 ? 'Todos los días' : `Cada ${cada} días`;
@@ -116,7 +139,7 @@ export async function pendientes({ dias = 45 } = {}) {
       if (hechas.has(`${o.id}|${f}`)) continue;
       const vence = momento(f, o.hora);
       const avisa = o.aviso_cantidad === null ? null : momentoAviso(f, o.hora, o.aviso_cantidad, o.aviso_unidad);
-      lista.push({ o, fecha: f, vence, avisa, atrasada: f < hoy, hoy: f === hoy, avisando: !!avisa && avisa <= ahora || vence <= ahora });
+      lista.push({ o, fecha: f, vence, avisa, atrasada: f < hoy, hoy: f === hoy, avisando: (!!avisa && avisa <= ahora) || vence <= ahora });
     }
   }
   return lista.sort((a, b) => a.vence - b.vence);
@@ -128,8 +151,8 @@ export async function pendientes({ dias = 45 } = {}) {
 const CLAVE_AJ = 'mb_avisos_ajustes_v1';
 const CLAVE_VISTOS = 'mb_avisos_vistos_v1';
 export function ajustesAvisos() {
-  try { return { activos: true, sonido: true, citaPorDefecto: 30, ...JSON.parse(localStorage.getItem(CLAVE_AJ) || '{}') }; }
-  catch { return { activos: true, sonido: true, citaPorDefecto: 30 }; }
+  try { return { activos: true, sonido: true, ...JSON.parse(localStorage.getItem(CLAVE_AJ) || '{}') }; }
+  catch { return { activos: true, sonido: true }; }
 }
 export function guardarAjustesAvisos(cambios) {
   const a = { ...ajustesAvisos(), ...cambios };
@@ -189,7 +212,7 @@ export async function pedirPermisoNotificaciones() {
 }
 async function notificar(titulo, cuerpo, clave) {
   if (!notificacionesPosibles() || Notification.permission !== 'granted') return;
-  const opciones = { body: cuerpo, tag: clave, icon: 'iconos/icon-192.png', badge: 'iconos/icon-192.png', requireInteraction: true, renotify: true, data: { url: location.pathname + '#secretaria' } };
+  const opciones = { body: cuerpo, tag: clave, icon: 'iconos/icon-192.png', badge: 'iconos/icon-192.png', requireInteraction: true, renotify: true, data: { url: location.pathname + '#avisos' } };
   try {
     const reg = await navigator.serviceWorker?.getRegistration();
     if (reg) return await reg.showNotification(titulo, opciones);
@@ -257,14 +280,21 @@ function porAvisar() {
     const clave = `c:${c.id}:${c.fecha}T${c.hora}:${c.aviso_min}`;
     if (toca(v, clave, ahora)) lista.push({ clave, tipo: 'cita', c, inicio });
   }
+  const hoy = hoyISO();
   for (const it of datos.items) {
     const o = it.o;
-    if (o.aviso_cantidad === null) continue;
-    const previo = `o:${o.id}:${it.fecha}`;
-    const elDia = `${previo}:dia`;
-    // Aviso previo (con la antelación elegida) y otro el mismo día a su hora
-    if (Number(o.aviso_cantidad) > 0 && it.vence.getTime() > ahora && it.avisa <= ahora && toca(v, previo, ahora)) lista.push({ clave: previo, tipo: 'ob', it });
-    else if (it.vence.getTime() <= ahora && toca(v, elDia, ahora)) lista.push({ clave: elDia, tipo: 'ob', it });
+    if (o.aviso_cantidad === null || !it.avisa || it.avisa.getTime() > ahora) continue;
+    if (o.recordar === 'no') {
+      // Un solo aviso, con la antelación elegida
+      const clave = `o:${o.id}:${it.fecha}`;
+      if (toca(v, clave, ahora)) lista.push({ clave, tipo: 'ob', it });
+      continue;
+    }
+    // Recordar cada día (a su hora) hasta que se marque como hecho
+    const primerDia = isoDe(it.avisa);
+    const cuando = primerDia === hoy ? it.avisa.getTime() : momento(hoy, o.hora).getTime();
+    const clave = `o:${o.id}:${it.fecha}:d${hoy}`;
+    if (ahora >= cuando && toca(v, clave, ahora)) lista.push({ clave, tipo: 'ob', it });
   }
   return lista;
 }
@@ -296,12 +326,12 @@ export function describir(a) {
       texto: `${nombreCompleto(c.clienta)} · ${c.servicios.map((s) => s.nombre).join(', ')}`, extra: c.clienta?.preferencias || '' };
   }
   const { o, fecha } = a.it;
-  const vencida = a.it.vence.getTime() <= Date.now();
-  const verbo = o.tipo === 'gasto' ? 'Pagar' : 'Toca';
+  const atrasada = fecha < hoyISO();
+  const extra = `${o.importe ? ` · ${euros(o.importe)}` : ''}${o.proveedor ? ` · ${o.proveedor}` : ''}`;
   return {
-    icono: o.tipo === 'gasto' ? '💶' : '📋',
-    titulo: vencida ? (fecha < hoyISO() ? `Pendiente desde ${textoCuando(fecha, o.hora)}` : `Es hoy: ${o.nombre}`) : `${verbo}: ${o.nombre}`,
-    texto: `${vencida && fecha === hoyISO() ? `Hoy a las ${horaCorta(o.hora)}` : vencida ? o.nombre : capital(textoCuando(fecha, o.hora))}${o.importe ? ` · unos ${euros(o.importe)}` : ''}${o.proveedor ? ` · ${o.proveedor}` : ''}`,
+    icono: o.importe ? '💶' : '📋',
+    titulo: o.nombre,
+    texto: `${atrasada ? `Pendiente desde ${textoCuando(fecha, o.hora)}` : `Toca ${textoCuando(fecha, o.hora)}`}${extra}`,
     extra: o.notas || '',
   };
 }
@@ -349,7 +379,7 @@ function pintarAlarmas() {
         <div class="alarma-texto"><strong>${esc(d.titulo)}</strong><p>${esc(d.texto)}</p>${d.extra ? `<small>${esc(d.extra)}</small>` : ''}</div>
         <div class="alarma-botones">
           <button class="btn btn-mini" data-posponer="10">10 min más</button>
-          ${!bloqueada && a.tipo === 'ob' && a.it.o.id ? `<button class="btn btn-mini" data-hecho>${a.it.o.tipo === 'gasto' ? 'Pagado' : 'Hecho'}</button>` : ''}
+          ${!bloqueada && a.tipo === 'ob' && a.it.o.id ? `<button class="btn btn-mini" data-hecho>${a.it.o.importe ? 'Pagado' : 'Hecho'}</button>` : ''}
           ${!bloqueada && a.tipo === 'cita' ? '<button class="btn btn-mini" data-ver>Ver cita</button>' : ''}
           <button class="btn btn-mini btn-principal" data-vale>Vale</button>
         </div>
@@ -379,13 +409,13 @@ async function alPulsar(e) {
   }
   if (b.hasAttribute('data-hecho')) {
     const { apuntarHecho } = await import('./vistas/secretaria.js');
-    apuntarHecho(a.it.o, a.it.fecha, () => { window.dispatchEvent(new Event('mb:datos')); if (location.hash.startsWith('#secretaria')) window.dispatchEvent(new HashChangeEvent('hashchange')); });
+    apuntarHecho(a.it.o, a.it.fecha, () => { window.dispatchEvent(new Event('mb:datos')); if (location.hash.startsWith('#avisos')) window.dispatchEvent(new HashChangeEvent('hashchange')); });
   }
 }
 
 // Número en el menú: cuántas cosas están avisando (atrasadas o con el aviso ya activo)
 function pintarInsignia() {
-  const enlace = document.querySelector('[data-seccion="secretaria"]');
+  const enlace = document.querySelector('[data-seccion="avisos"]');
   if (!enlace) return;
   const n = datos.items.filter((it) => (it.avisa && it.avisa <= new Date()) || it.vence <= new Date()).length;
   let b = enlace.querySelector('.insignia-nav');
