@@ -1,4 +1,4 @@
-# Manely Belleza · app de gestión (alfa 0.5)
+# Manely Belleza · app de gestión (alfa 0.6)
 
 Agenda, clientas y servicios. Funciona en móvil, tablet y ordenador, y se instala como app desde el navegador.
 
@@ -87,6 +87,26 @@ En **Catálogo → Inventario**, el material que se gasta y no se cobra (algodon
 - En la ficha de cada artículo: consumo medio al mes (cantidad y euros), para cuántos días queda y todos sus movimientos (se puede borrar uno mal apuntado y el stock se recalcula).
 - **Lista de la compra** con lo que está por debajo del mínimo, agrupada por proveedor, para enviar por WhatsApp o copiar.
 
+## Versión 0.6: Secretaria y avisos
+
+**Instalación:** ejecutar `supabase/005_secretaria.sql` en el SQL Editor (añade dos tablas y el campo de aviso de las citas; no borra nada) y subir los archivos.
+
+Sección nueva **Secretaria** (campanita en el menú), para lo que no tiene que ver con las clientas:
+- **Gastos y obligaciones que se repiten**: alquiler, luz, cuota de autónomos, teléfono, seguro, llevar los papeles al gestor… Cada uno es un **gasto** (se paga, con importe aproximado) o una **tarea** (hay que hacerla). Se repite cada N días, semanas, meses o años (cada 3 meses = trimestral), o una sola vez. Hay ejemplos para rellenar con un toque.
+- **Aviso** con la antelación que se quiera (minutos, horas, días o semanas antes) y otro aviso el mismo día a su hora.
+- **Próximo**: lo atrasado, lo de hoy, los próximos 7 días y más adelante. Botón **Pagado / Hecho** para apuntar el importe real (la luz cambia cada mes) o **Saltar esta vez**.
+- **Todo**: la lista completa por categorías. En la ficha, próximas fechas, historial de pagos y media real.
+- **Pagado**: lo pagado mes a mes con el **total del mes y del trimestre**, para el gestor.
+- **Gasto suelto**: un gasto que no se repite (una lámpara, un curso…).
+- Arriba: gastos fijos del mes, pagado, lo que falta por pagar y lo atrasado. El número rojo del menú indica cuántas cosas están avisando.
+
+**Avisos con sonido** (campanita y vibración), que se pueden posponer 10 minutos:
+- De la Secretaria, con su antelación.
+- De las **citas**: al crear o editar una cita hay un campo **Avisar** (sin aviso, 5 min… 1 día antes). El valor por defecto para las citas nuevas se elige en *Ajustes → Avisos*.
+- Suenan **mientras la app está abierta**, también en segundo plano o con la pantalla bloqueada por el PIN (en ese caso sin botones de acción). Si la app está cerrada del todo, el aviso sale al abrirla. Conviene dejarla abierta en la tablet del salón.
+- En *Ajustes → Avisos*: activar o no en cada dispositivo, sonido, **Probar aviso** y permitir las notificaciones del sistema.
+- Avisos con la app cerrada (notificaciones push): próxima versión, con un servidor de notificaciones en Supabase.
+
 ## Límites del plan gratuito de Supabase
 
 - El proyecto **se pausa tras una semana sin uso**; con uso diario no pasa. Si se pausa, se reactiva desde el panel.
@@ -108,12 +128,14 @@ js/tpv.js               TPV de botones (tablet y ordenador)
 js/factura.js           facturas: datos, PDF, enviar y descargar
 js/ics.js               lectura de calendarios .ics (Google Calendar)
 js/importar.js          pantalla de importación de citas
+js/avisos.js            avisos: fechas que se repiten, sonido y notificaciones
 js/fechas.js            fechas en hora local (sin desfases)
-js/vistas/*.js          agenda, caja, clientas, catálogo (servicios y productos), ajustes
+js/vistas/*.js          agenda, caja, clientas, catálogo (servicios, productos, inventario), secretaria, ajustes
 supabase/001_fase1.sql  tablas, reglas de seguridad y funciones (fase 1)
 supabase/002_fase2_caja.sql  productos, cobros y cierres de caja (fase 2)
 supabase/003_facturas.sql    facturas con numeración correlativa (0.3)
 supabase/004_inventario.sql  inventario de material (0.5)
+supabase/005_secretaria.sql  gastos fijos, obligaciones y avisos (0.6)
 sw.js, manifest         instalación como app
 ```
 
@@ -125,4 +147,4 @@ Al publicar cambios, sube `VERSION` en `sw.js` para que los dispositivos descarg
 3. Proveedores y compras, con los PDF de las facturas recibidas.
 4. Informe trimestral en un clic, en el mismo formato que recibe el gestor, y exportación de datos.
 5. Facturas a clientas en PDF y por email, con Verifactu (obligatorio para autónomos desde el 1 de julio de 2027).
-6. Inventario, recordatorios y estadísticas.
+6. ~~Inventario~~ ✔ 0.5 y ~~recordatorios~~ ✔ 0.6. Pendiente: avisos con la app cerrada (push) y estadísticas.

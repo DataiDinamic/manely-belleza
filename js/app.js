@@ -8,6 +8,8 @@ import * as clientas from './vistas/clientas.js';
 import * as catalogo from './vistas/catalogo.js';
 import * as caja from './vistas/caja.js';
 import * as ajustes from './vistas/ajustes.js';
+import * as secretaria from './vistas/secretaria.js';
+import * as avisos from './avisos.js';
 
 const raiz = document.getElementById('app');
 let cuenta = null;
@@ -18,6 +20,7 @@ let vigilando = false;
 // ---------------------------------------------------------------------
 function pantallaAcceso({ recuperando = false } = {}) {
   document.body.classList.remove('con-app');
+  avisos.parar();
   const demo = db.modo === 'demo';
   raiz.innerHTML = `
     <main class="acceso">
@@ -90,6 +93,7 @@ async function arrancarApp() {
   }
   pintarMarco();
   navegar();
+  avisos.iniciar();
 }
 
 async function olvidePin() {
@@ -109,6 +113,7 @@ const SECCIONES = [
   { id: 'caja', texto: 'Caja', icono: '<path d="M3 10h18v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-9ZM5 10V6a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v4M8 14h2M14 14h2M8 17h8"/>' },
   { id: 'clientas', texto: 'Clientas', icono: '<path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM4 21a8 8 0 0 1 16 0"/>' },
   { id: 'catalogo', texto: 'Catálogo', icono: '<path d="M9 3h6v4l2 3v10a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1V10l2-3V3ZM7 13h10"/>' },
+  { id: 'secretaria', texto: 'Secretaria', icono: '<path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15L6 16ZM10 20.5a2 2 0 0 0 4 0"/>' },
   { id: 'ajustes', texto: 'Ajustes', icono: '<path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/>' },
 ];
 
@@ -140,6 +145,7 @@ async function navegar() {
     if (seccion === 'clientas') await clientas.render(el, param);
     else if (seccion === 'catalogo') await catalogo.render(el, param);
     else if (seccion === 'caja') await caja.render(el);
+    else if (seccion === 'secretaria') await secretaria.render(el, param);
     else if (seccion === 'ajustes') await ajustes.render(el, { cuenta, alSalir: salir });
     else await agenda.render(el);
   } catch (e) { errorAviso(e, 'Error al abrir la sección'); }

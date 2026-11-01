@@ -4,10 +4,14 @@ import { esc, aviso, errorAviso, cargando, datosFormulario, confirmar } from '..
 import { leerAjustes, guardarAjustes } from '../ajustes.js';
 import { cambiarPin, fijarMinutosBloqueo, bloquearYa } from '../pin.js';
 import { elegirArchivo } from '../importar.js';
+import { ajustesAvisos, guardarAjustesAvisos, probar, notificacionesPosibles, pedirPermisoNotificaciones, textoMinutosAntes } from '../avisos.js';
 
 export async function render(el, { cuenta, alSalir }) {
   const n = db.negocioActual() || {};
   const aj = leerAjustes();
+  const av = ajustesAvisos();
+  const permiso = notificacionesPosibles() ? Notification.permission : 'no';
+  const textoPermiso = { granted: 'Permitidas en este dispositivo.', denied: 'Bloqueadas: se pueden permitir en los ajustes del navegador (candado junto a la dirección → Notificaciones).', default: 'Aún sin permitir.', no: 'Este navegador no las admite.' }[permiso];
   el.innerHTML = `
     <section class="ajustes" aria-labelledby="tituloAjustes">
       <header class="barra"><h1 id="tituloAjustes" class="barra-titulo">Ajustes</h1></header>
@@ -48,6 +52,24 @@ export async function render(el, { cuenta, alSalir }) {
         </div>
       </form>
 
+
+      <form class="tarjeta" data-form="avisos">
+        <h2>Avisos de la Secretaria y de las citas</h2>
+        <p class="texto-suave">Suenan mientras la app está abierta, aunque esté en segundo plano o con otra pestaña delante. Si está cerrada del todo, el aviso sale al abrirla. Conviene dejarla abierta en la tablet del salón.</p>
+        <div class="fila-3">
+          <label class="check"><input type="checkbox" name="activos" ${av.activos ? 'checked' : ''}> Avisar en este dispositivo</label>
+          <label class="check"><input type="checkbox" name="sonido" ${av.sonido ? 'checked' : ''}> Con sonido</label>
+          <label class="campo"><span>Aviso en las citas nuevas</span>
+            <select name="citaPorDefecto">${[null, 5, 10, 15, 30, 45, 60, 120, 1440].map((m) => `<option value="${m ?? ''}" ${String(av.citaPorDefecto ?? '') === String(m ?? '') ? 'selected' : ''}>${textoMinutosAntes(m)}</option>`).join('')}</select></label>
+        </div>
+        <p class="texto-suave">Notificaciones del sistema (para verlas con la app en segundo plano): <strong class="estado-permiso">${textoPermiso}</strong></p>
+        <div class="acciones-form">
+          <button class="btn btn-principal">Guardar</button>
+          <button type="button" class="btn" data-a="probar-aviso">Probar aviso</button>
+          ${permiso === 'default' ? '<button type="button" class="btn" data-a="notificaciones">Permitir notificaciones</button>' : ''}
+        </div>
+      </form>
+
       <section class="tarjeta">
         <h2>Pasar citas desde Google Calendar</h2>
         <ol class="pasos-importar">
@@ -67,7 +89,7 @@ export async function render(el, { cuenta, alSalir }) {
           ${db.modo === 'demo' ? '<button class="btn btn-peligro-suave" data-a="reiniciar-demo">Borrar datos de ejemplo</button>' : ''}
         </div>
       </section>
-      <p class="texto-suave version">Manely Belleza · versión alfa 0.5</p>
+      <p class="texto-suave version">Manely Belleza · versión alfa 0.6</p>
     </section>`;
 
   el.querySelector('[data-form="negocio"]').addEventListener('submit', async (e) => {
@@ -83,8 +105,20 @@ export async function render(el, { cuenta, alSalir }) {
     fijarMinutosBloqueo(d.bloqueo);
     aviso('Ajustes guardados');
   });
+  el.querySelector('[data-form="avisos"]').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const d = datosFormulario(e.target);
+    guardarAjustesAvisos({ activos: d.activos, sonido: d.sonido, citaPorDefecto: d.citaPorDefecto === '' ? null : Number(d.citaPorDefecto) });
+    aviso('Avisos guardados');
+  });
   el.addEventListener('click', async (e) => {
     const a = e.target.closest('[data-a]')?.dataset.a;
+    if (a === 'probar-aviso') probar();
+    if (a === 'notificaciones') {
+      const r = await pedirPermisoNotificaciones();
+      aviso(r === 'granted' ? 'Notificaciones permitidas' : 'No se han permitido las notificaciones', r === 'granted' ? 'ok' : 'error');
+      return render(el, { cuenta, alSalir });
+    }
     if (a === 'pin') { await cambiarPin(cuenta); aviso('PIN cambiado'); }
     if (a === 'importar') elegirArchivo();
     if (a === 'bloquear') bloquearYa();

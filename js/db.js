@@ -2,7 +2,7 @@
 //  - "supabase": datos en la nube (lo normal)
 //  - "demo": datos solo en este navegador, para probar sin configurar nada
 import { CONFIG } from './config.js';
-import { hoyISO, sumarDias, aMinutos, horaCorta } from './fechas.js';
+import { hoyISO, sumarDias, aMinutos, horaCorta, desdeISO, isoDe } from './fechas.js';
 
 const SUPABASE_JS = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/+esm';
 
@@ -386,6 +386,96 @@ export async function borrarMovimiento(id) {
 }
 
 // =====================================================================
+// Secretaria: gastos fijos y obligaciones que se repiten
+// =====================================================================
+const CAMPOS_OBLIGACION = ['nombre', 'tipo', 'categoria', 'proveedor', 'importe', 'repeticion', 'cada', 'fecha_inicio', 'fecha_fin',
+  'hora', 'aviso_cantidad', 'aviso_unidad', 'notas', 'activo'];
+
+function normalizarObligacion(o) {
+  return { ...o, importe: o.importe === null || o.importe === undefined ? null : Number(o.importe), cada: Number(o.cada) || 1,
+    hora: horaCorta(o.hora || '10:00'), aviso_cantidad: o.aviso_cantidad === null || o.aviso_cantidad === undefined ? null : Number(o.aviso_cantidad) };
+}
+
+export async function listarObligaciones() {
+  let filas;
+  if (modo === 'demo') filas = demo.listar('obligaciones');
+  else filas = comprobar(await sb.from('obligaciones').select('*').eq('negocio_id', N).order('nombre'));
+  return filas.map(normalizarObligacion)
+    .sort((a, b) => (a.categoria || 'zzz').localeCompare(b.categoria || 'zzz', 'es') || a.nombre.localeCompare(b.nombre, 'es'));
+}
+
+export async function guardarObligacion(datos) {
+  const fila = limpiar(datos, CAMPOS_OBLIGACION);
+  if (!fila.nombre) throw new Error('Falta el nombre');
+  if (!fila.fecha_inicio) throw new Error('Falta la fecha');
+  fila.tipo = fila.tipo === 'tarea' ? 'tarea' : 'gasto';
+  fila.importe = fila.tipo === 'gasto' ? num(fila.importe) : null;
+  fila.cada = Math.max(1, Math.round(num(fila.cada) || 1));
+  fila.repeticion = fila.repeticion || 'meses';
+  fila.fecha_fin = fila.fecha_fin || null;
+  fila.hora = fila.hora || '10:00';
+  fila.aviso_cantidad = num(fila.aviso_cantidad);
+  fila.aviso_unidad = fila.aviso_unidad || 'dias';
+  if (modo === 'demo') return normalizarObligacion(demo.guardar('obligaciones', datos.id ? { ...fila, id: datos.id } : { activo: true, ...fila }));
+  if (datos.id) return normalizarObligacion(comprobar(await sb.from('obligaciones').update(fila).eq('id', datos.id).select().single()));
+  return normalizarObligacion(comprobar(await sb.from('obligaciones').insert({ ...fila, negocio_id: N }).select().single()));
+}
+
+// Se borra si no tiene pagos apuntados; si los tiene, se deja de usar (para no perder el historial)
+export async function eliminarObligacion(id) {
+  const regs = await registrosObligaciones({ obligacionId: id });
+  if (regs.length) {
+    if (modo === 'demo') demo.actualizar('obligaciones', id, { activo: false });
+    else comprobar(await sb.from('obligaciones').update({ activo: false }).eq('id', id));
+    return 'desactivada';
+  }
+  if (modo === 'demo') { const d = demo.leer(); d.obligaciones = d.obligaciones.filter((x) => x.id !== id); demo.escribir(d); }
+  else comprobar(await sb.from('obligaciones').delete().eq('id', id));
+  return 'eliminada';
+}
+
+export async function registrosObligaciones({ desde, hasta, obligacionId } = {}) {
+  let filas;
+  if (modo === 'demo') {
+    filas = demo.listar('registros').filter((r) => (!desde || r.fecha >= desde) && (!hasta || r.fecha <= hasta)
+      && (!obligacionId || r.obligacion_id === obligacionId));
+  } else {
+    let q = sb.from('obligacion_registros').select('*').eq('negocio_id', N);
+    if (desde) q = q.gte('fecha', desde);
+    if (hasta) q = q.lte('fecha', hasta);
+    if (obligacionId) q = q.eq('obligacion_id', obligacionId);
+    filas = comprobar(await q);
+  }
+  return filas.map((r) => ({ ...r, importe: r.importe === null || r.importe === undefined ? null : Number(r.importe) }))
+    .sort((a, b) => (b.fecha + b.fecha_prevista).localeCompare(a.fecha + a.fecha_prevista));
+}
+
+// Registros de unas fechas previstas concretas (para saber qué está hecho)
+export async function registrosPrevistos(desde, hasta) {
+  if (modo === 'demo') return demo.listar('registros').filter((r) => r.fecha_prevista >= desde && r.fecha_prevista <= hasta);
+  return comprobar(await sb.from('obligacion_registros').select('id, obligacion_id, fecha_prevista, estado, fecha, importe')
+    .eq('negocio_id', N).gte('fecha_prevista', desde).lte('fecha_prevista', hasta));
+}
+
+// reg: { obligacion_id, fecha_prevista, fecha, estado: 'hecho'|'omitido', importe?, notas? }
+export async function registrarObligacion(reg) {
+  const fila = { obligacion_id: reg.obligacion_id, fecha_prevista: reg.fecha_prevista, fecha: reg.fecha || hoyISO(),
+    estado: reg.estado === 'omitido' ? 'omitido' : 'hecho', importe: reg.estado === 'omitido' ? null : num(reg.importe), notas: reg.notas || null };
+  if (modo === 'demo') {
+    const d = demo.leer();
+    if (d.registros.some((r) => r.obligacion_id === fila.obligacion_id && r.fecha_prevista === fila.fecha_prevista)) throw new Error('Esa fecha ya estaba apuntada');
+    d.registros.push({ id: uid(), ...fila, created_at: new Date().toISOString() });
+    demo.escribir(d); return;
+  }
+  comprobar(await sb.from('obligacion_registros').insert({ ...fila, negocio_id: N }));
+}
+
+export async function borrarRegistro(id) {
+  if (modo === 'demo') { const d = demo.leer(); d.registros = d.registros.filter((x) => x.id !== id); demo.escribir(d); return; }
+  comprobar(await sb.from('obligacion_registros').delete().eq('id', id));
+}
+
+// =====================================================================
 // Facturas
 // =====================================================================
 export async function emitirFactura(cobroId, tipo, receptor = {}) {
@@ -469,6 +559,7 @@ const demo = {
         if (!d.productos) { d.productos = semillaProductos(); d.cobros = []; d.cierres = []; this.escribir(d); }
         if (!d.facturas) { d.facturas = []; this.escribir(d); }
         if (!d.consumibles) { const s = semillaInventario(); d.consumibles = s.consumibles; d.movimientos = s.movimientos; this.escribir(d); }
+        if (!d.obligaciones) { const s = semillaSecretaria(); d.obligaciones = s.obligaciones; d.registros = s.registros; this.escribir(d); }
         return d;
       }
     } catch { /* vacío */ }
@@ -678,6 +769,26 @@ function semillaInventario() {
   return { consumibles, movimientos };
 }
 
+function semillaSecretaria() {
+  const hoy = hoyISO();
+  const mes = (dia, n = 0) => { const d = desdeISO(hoy); d.setDate(1); d.setMonth(d.getMonth() + n); d.setDate(dia); return isoDe(d); };
+  const o = (nombre, tipo, categoria, proveedor, importe, repeticion, cada, fecha_inicio, hora, aviso_cantidad, aviso_unidad, notas = '') =>
+    ({ id: uid(), nombre, tipo, categoria, proveedor, importe, repeticion, cada, fecha_inicio, fecha_fin: null, hora, aviso_cantidad, aviso_unidad, notas, activo: true });
+  const obligaciones = [
+    o('Alquiler del local', 'gasto', 'Local', 'Carolina Marín', 250, 'meses', 1, mes(1, -3), '10:00', 3, 'dias', 'Por transferencia'),
+    o('Luz', 'gasto', 'Suministros', 'Endesa', 60, 'meses', 1, mes(12, -3), '10:00', 1, 'semanas', 'Domiciliada: comprobar el cargo'),
+    o('Cuota de autónomos', 'gasto', 'Impuestos y cuotas', 'Seguridad Social', 230, 'meses', 1, mes(28, -3), '10:00', 2, 'dias'),
+    o('Teléfono e internet', 'gasto', 'Suministros', 'Movistar', 35, 'meses', 1, mes(20, -3), '10:00', 2, 'dias'),
+    o('Llevar los papeles al gestor', 'tarea', 'Gestoría', 'Gestoría', null, 'meses', 3, '2026-01-05', '10:00', 1, 'semanas', 'Facturas, tickets de compra y el informe del trimestre'),
+  ];
+  const registros = [];
+  const pagado = (ob, n, importe) => registros.push({ id: uid(), obligacion_id: ob.id, fecha_prevista: mes(Number(ob.fecha_inicio.slice(8)), n),
+    fecha: mes(Number(ob.fecha_inicio.slice(8)), n), estado: 'hecho', importe, notas: null, created_at: new Date().toISOString() });
+  for (const n of [-3, -2, -1]) { pagado(obligaciones[0], n, 250); pagado(obligaciones[2], n, 230); pagado(obligaciones[3], n, 35); }
+  pagado(obligaciones[1], -3, 54.2); pagado(obligaciones[1], -2, 61.8); pagado(obligaciones[1], -1, 66.35);
+  return { obligaciones, registros };
+}
+
 function semillaProductos() {
   const p = (nombre, marca, categoria, precio, stock) => ({ id: uid(), nombre, marca, categoria, precio, iva_pct: 21, stock, activo: true });
   return [
@@ -730,6 +841,7 @@ function semilla() {
     cierres: [],
     facturas: [],
     ...semillaInventario(),
+    ...semillaSecretaria(),
     citas: [
       cita(clientas[0], hoy, '10:00', [servicios[0], servicios[5]]),
       cita(clientas[1], hoy, '11:15', [servicios[6]]),

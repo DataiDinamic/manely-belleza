@@ -4,6 +4,10 @@ import { esc, euros, nombreCompleto, abrirHoja, confirmar, pedirTexto, aviso, er
   telefonoWhatsApp, esmalteAleatorio, cargando } from './util.js';
 import { hoyISO, aMinutos, aHora, textoDiaLargo, duracionTexto, horaCorta } from './fechas.js';
 import { abrirCobro, abrirDetalleCobro, textoPagos } from './caja.js';
+import { ajustesAvisos, textoMinutosAntes } from './avisos.js';
+
+const OPCIONES_AVISO = [null, 5, 10, 15, 30, 45, 60, 120, 180, 1440];
+const cambioDatos = () => window.dispatchEvent(new Event('mb:datos'));
 
 export const ESTADOS = {
   pendiente: 'Pendiente de confirmar',
@@ -42,6 +46,10 @@ export async function abrirFormularioCita({ cita = null, fecha = hoyISO(), hora 
       `<option value="${s.id}">${esc(s.nombre)} · ${duracionTexto(s.duracion_min)} · ${euros(s.precio)}</option>`).join('')}</optgroup>`).join('');
 
   const titulo = cita ? 'Editar cita' : copiarDe ? 'Repetir cita' : 'Nueva cita';
+  // Aviso previo: el de la cita o, si es nueva, el de Ajustes de este dispositivo
+  const porDefecto = ajustesAvisos().citaPorDefecto;
+  const avisoInicial = cita ? (cita.aviso_min ?? null) : (porDefecto === '' || porDefecto === null || porDefecto === undefined ? null : Number(porDefecto));
+  const opcionesAviso = OPCIONES_AVISO.includes(avisoInicial) ? OPCIONES_AVISO : [...OPCIONES_AVISO, avisoInicial].sort((a, b) => (a ?? -1) - (b ?? -1));
   const { el, cerrar } = abrirHoja(`
     <form class="form-cita" novalidate>
       <header class="hoja-cabecera">
@@ -74,10 +82,13 @@ export async function abrirFormularioCita({ cita = null, fecha = hoyISO(), hora 
         <div class="fila-2">
           <label class="campo"><span>Duración (min)</span>
             <input type="number" name="duracion" min="5" max="720" step="5" inputmode="numeric"></label>
-          ${cita ? `<label class="campo"><span>Estado</span>
-            <select name="estado">${Object.entries(ESTADOS).map(([k, v]) =>
-              `<option value="${k}" ${cita.estado === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label>` : '<div></div>'}
+          <label class="campo"><span>Avisar</span>
+            <select name="aviso_min">${opcionesAviso.map((m) =>
+              `<option value="${m ?? ''}" ${m === avisoInicial ? 'selected' : ''}>${textoMinutosAntes(m)}</option>`).join('')}</select></label>
         </div>
+        ${cita ? `<label class="campo"><span>Estado</span>
+            <select name="estado">${Object.entries(ESTADOS).map(([k, v]) =>
+              `<option value="${k}" ${cita.estado === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label>` : ''}
 
         <label class="campo"><span>Notas de esta cita</span>
           <textarea name="notas" rows="2" placeholder="Ej.: trae foto del diseño">${esc(cita?.notas || '')}</textarea></label>
@@ -212,6 +223,7 @@ export async function abrirFormularioCita({ cita = null, fecha = hoyISO(), hora 
       duracion_min: duracion,
       estado: f.estado?.value || (cita ? cita.estado : 'pendiente'),
       notas: f.notas.value.trim(),
+      aviso_min: f.aviso_min.value === '' ? null : Number(f.aviso_min.value),
     };
     cargando(true);
     try {
@@ -227,6 +239,7 @@ export async function abrirFormularioCita({ cita = null, fecha = hoyISO(), hora 
       cargando(true);
       const id = await db.guardarCita(datos, lineas.map((l) => ({ ...l, nombre: l.nombre.trim() })));
       aviso(cita ? 'Cita actualizada' : 'Cita guardada');
+      cambioDatos();
       cerrar();
       alGuardar?.(id, datos);
     } catch (err) { errorAviso(err); }
@@ -292,6 +305,7 @@ export async function abrirDetalleCita(id, alCambiar) {
         <p class="detalle-cuando">${esc(textoDiaLargo(c.fecha))} · ${c.hora}–${aHora(c.fin)}</p>
         <h2 class="hoja-titulo">${cl ? `<a href="#clientas/${cl.id}" data-cerrar>${esc(nombreCompleto(cl))}</a>` : 'Clienta eliminada'}</h2>
         <span class="estado estado-${c.estado}">${ESTADOS[c.estado]}</span>
+        ${c.aviso_min !== null && c.aviso_min !== undefined && activa ? `<span class="aviso-cita">🔔 ${esc(textoMinutosAntes(c.aviso_min))}</span>` : ''}
       </div>
       <button type="button" class="btn-icono" data-cerrar aria-label="Cerrar">✕</button>
     </header>
@@ -347,6 +361,7 @@ export async function abrirDetalleCita(id, alCambiar) {
         await db.cambiarEstadoCita(c.id, a);
         aviso({ confirmada: 'Cita confirmada', realizada: 'Cita marcada como hecha', no_presentada: 'Marcada como «No vino»', pendiente: 'Cita pendiente otra vez' }[a]);
       }
+      cambioDatos();
       cerrar();
       alCambiar?.();
     } catch (err) { errorAviso(err); }

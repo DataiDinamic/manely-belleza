@@ -1,13 +1,13 @@
 // Service worker: guarda la "carcasa" de la app para que abra rápido.
 // Los datos (Supabase) nunca se guardan en caché.
 // Al publicar cambios, sube el número de VERSION.
-const VERSION = 'mb-0.5.0';
+const VERSION = 'mb-0.6.0';
 const CARCASA = [
   './', './index.html', './manifest.webmanifest', './css/app.css',
   './js/app.js', './js/config.js', './js/db.js', './js/util.js', './js/fechas.js', './js/pin.js',
-  './js/ajustes.js', './js/citas.js', './js/caja.js', './js/tpv.js', './js/factura.js', './js/ics.js', './js/importar.js',
+  './js/ajustes.js', './js/citas.js', './js/caja.js', './js/tpv.js', './js/factura.js', './js/ics.js', './js/importar.js', './js/avisos.js',
   './js/vistas/agenda.js', './js/vistas/clientas.js', './js/vistas/servicios.js', './js/vistas/ajustes.js',
-  './js/vistas/caja.js', './js/vistas/catalogo.js', './js/vistas/productos.js', './js/vistas/inventario.js',
+  './js/vistas/caja.js', './js/vistas/catalogo.js', './js/vistas/productos.js', './js/vistas/inventario.js', './js/vistas/secretaria.js',
   './iconos/icon-192.png', './iconos/icon-512.png', './iconos/insignia.png', './iconos/flor.png',
 ];
 
@@ -40,4 +40,15 @@ self.addEventListener('fetch', (e) => {
     if (resp.ok || resp.type === 'opaque') caches.open(VERSION).then((c) => c.put(e.request, copia));
     return resp;
   })));
+});
+
+// Al tocar una notificación de aviso: abrir (o traer delante) la app
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  const destino = new URL(e.notification.data?.url || './#secretaria', self.registration.scope).href;
+  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((lista) => {
+    const abierta = lista.find((c) => c.url.startsWith(self.registration.scope));
+    if (abierta) return abierta.focus();
+    return self.clients.openWindow(destino);
+  }));
 });
