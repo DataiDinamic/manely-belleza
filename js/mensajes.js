@@ -64,7 +64,7 @@ export function abrirMensajeWhatsApp({ clienta, cita = null, citas = [], alConfi
   const tel = telefonoWhatsApp(clienta?.telefono);
   if (!tel) return aviso('Esta clienta no tiene teléfono.', 'error');
   if (clienta.whatsapp === false) return aviso('Esta clienta no tiene WhatsApp. Si se lo ha instalado, márcalo en «Editar ficha».', 'error');
-  let medio = clienta?.tiene_whatsapp === false ? 'sms' : 'whatsapp';
+  let medio = clienta?.whatsapp === false ? 'sms' : 'whatsapp';
   const opciones = cita ? [cita] : citas;
   let actual = opciones[0] || null;
   const { el, cerrar } = abrirHoja(`
@@ -79,7 +79,7 @@ export function abrirMensajeWhatsApp({ clienta, cita = null, citas = [], alConfi
           <button type="button" data-medio="whatsapp">WhatsApp</button>
           <button type="button" data-medio="sms">SMS</button>
         </div>
-        ${clienta?.tiene_whatsapp === false ? '<p class="texto-suave">Esta clienta no tiene WhatsApp.</p>' : ''}
+        ${clienta?.whatsapp === false ? '<p class="texto-suave">Esta clienta no tiene WhatsApp.</p>' : ''}
         ${!cita && citas.length ? `<label class="campo"><span>Sobre</span><select name="sobre">
           ${citas.map((x, i) => `<option value="${i}">Su cita del ${esc(textoDiaLargo(x.fecha).toLowerCase())} a las ${esc(x.hora)}</option>`).join('')}
           <option value="general">Mensaje general (sin cita)</option></select></label>` : ''}
