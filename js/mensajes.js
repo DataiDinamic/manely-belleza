@@ -9,12 +9,14 @@ import { enviarSMS } from './telefono.js';
 export const ORIGINALES = {
   cita: '¡Buenas! Te confirmo la cita para [tratamientos], el día [día] a las [hora]. Para cualquier cosa escríbeme aquí y lo arreglo lo antes posible. Gracias.',
   general: '¡Hola [nombre]! ',
+  recordatorio: '¡Hola [nombre]! Te recuerdo tu cita de mañana, [día], a las [hora] para [tratamientos]. Si no puedes venir, avísame por aquí. ¡Hasta mañana!',
 };
 export const TITULOS = {
   cita: 'Mensaje para confirmar una cita',
   general: 'Mensaje general (desde la ficha de la clienta, cuando no tiene cita próxima)',
+  recordatorio: 'Recordatorio el día antes (Recordatorios de mañana y avisos programados)',
 };
-export const HUECOS = { cita: ['[nombre]', '[tratamientos]', '[día]', '[hora]'], general: ['[nombre]'] };
+export const HUECOS = { cita: ['[nombre]', '[tratamientos]', '[día]', '[hora]'], general: ['[nombre]'], recordatorio: ['[nombre]', '[tratamientos]', '[día]', '[hora]'] };
 const CLAVE_LOCAL = 'mb_mensajes_whatsapp_v1';
 const CLAVE_ANTIGUA = 'mb_plantilla_whatsapp_v1';   // versión 0.7.1 (solo el de citas, en el dispositivo)
 
@@ -60,7 +62,7 @@ export function rellenar(plantilla, { clienta, cita }) {
 
 // Ventana para revisar y cambiar el mensaje antes de abrir WhatsApp.
 // cita es opcional; citas (opcional) son las próximas de la clienta, para elegir.
-export function abrirMensajeWhatsApp({ clienta, cita = null, citas = [], alConfirmar }) {
+export function abrirMensajeWhatsApp({ clienta, cita = null, citas = [], alConfirmar, tipo = 'cita', alEnviar }) {
   const tel = telefonoWhatsApp(clienta?.telefono);
   if (!tel) return aviso('Esta clienta no tiene teléfono.', 'error');
   const sinWhatsApp = clienta.whatsapp === false;
@@ -91,6 +93,7 @@ export function abrirMensajeWhatsApp({ clienta, cita = null, citas = [], alConfi
       </div>
       <footer class="hoja-pie">
         <button type="button" class="btn" data-cerrar>Cancelar</button>
+        <button type="button" class="btn btn-lila" data-programar title="Te avisará con sonido a la hora que elijas para mandarlo">🔔 Añadir aviso</button>
         <button class="btn btn-whatsapp" data-enviar>Abrir WhatsApp</button>
       </footer>
     </form>`, { ancho: 'normal' });
@@ -115,7 +118,7 @@ export function abrirMensajeWhatsApp({ clienta, cita = null, citas = [], alConfi
     t.value = f.elements.enlace.checked && linea ? sin.replace(/\s+$/, '') + linea : sin;
   };
   const pintar = () => {
-    f.elements.texto.value = rellenar(leerMensaje(actual ? 'cita' : 'general'), { clienta, cita: actual });
+    f.elements.texto.value = rellenar(leerMensaje(actual ? tipo : 'general'), { clienta, cita: actual });
     el.querySelector('.confirmar-cita').hidden = !(actual && actual.estado === 'pendiente');
     el.querySelector('.con-enlace').hidden = !actual?.token;
     // Con el enlace, la cita se confirma cuando ella responda; sin él, se puede marcar ya
@@ -123,6 +126,14 @@ export function abrirMensajeWhatsApp({ clienta, cita = null, citas = [], alConfi
     ponerEnlace();
   };
   f.elements.enlace.addEventListener('change', ponerEnlace);
+  // «Añadir aviso»: en vez de mandarlo ahora, la app avisará a la hora elegida con el mensaje preparado
+  el.querySelector('[data-programar]').addEventListener('click', async () => {
+    const texto = f.elements.texto.value.trim();
+    if (!texto) return aviso('Escribe el mensaje.', 'error');
+    cerrar();
+    const { programarMensaje } = await import('./recordatorios.js');
+    programarMensaje({ clienta, cita: actual, texto, medio });
+  });
   f.elements.sobre?.addEventListener('change', (e) => { actual = e.target.value === 'general' ? null : citas[Number(e.target.value)]; pintar(); });
   pintar();
   setTimeout(() => { const t = f.elements.texto; t.focus(); t.setSelectionRange(t.value.length, t.value.length); }, 120);
@@ -132,8 +143,8 @@ export function abrirMensajeWhatsApp({ clienta, cita = null, citas = [], alConfi
     if (!texto) return aviso('Escribe el mensaje.', 'error');
     cerrar();
     // WhatsApp o SMS se abren con el mensaje escrito: allí solo queda pulsar «Enviar»
-    if (medio === 'sms') enviarSMS(clienta, texto);
-    else window.open(`https://wa.me/${tel}?text=${encodeURIComponent(texto)}`, '_blank', 'noopener');
+    abrirEnvio(clienta, texto, medio);
+    alEnviar?.();
     if (actual?.estado === 'pendiente' && f.elements.confirmar.checked) {
       try {
         cargando(true);
@@ -144,6 +155,12 @@ export function abrirMensajeWhatsApp({ clienta, cita = null, citas = [], alConfi
       } catch (err) { errorAviso(err); } finally { cargando(false); }
     }
   });
+}
+
+// Abre WhatsApp (o los SMS) con el mensaje escrito: allí solo queda pulsar «Enviar»
+export function abrirEnvio(clienta, texto, medio = 'whatsapp') {
+  if (medio === 'sms' || clienta?.whatsapp === false) return enviarSMS(clienta, texto);
+  window.open(`https://wa.me/${telefonoWhatsApp(clienta?.telefono)}?text=${encodeURIComponent(texto)}`, '_blank', 'noopener');
 }
 
 // Enlace de la página de la cita para la clienta (cita.html)

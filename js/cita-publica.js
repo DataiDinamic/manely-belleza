@@ -88,6 +88,7 @@ function archivoICS(c, ini, fin) {
     `SUMMARY:${limpiar(`Cita en ${c.negocio || 'Manely Belleza'}`)}`,
     `DESCRIPTION:${limpiar(`${enumerar(c.servicios)}${c.telefono ? `\nTeléfono: ${c.telefono}` : ''}`)}`,
     ...(c.direccion ? [`LOCATION:${limpiar(c.direccion)}`] : []),
+    'BEGIN:VALARM', 'ACTION:DISPLAY', 'DESCRIPTION:Mañana tienes cita', 'TRIGGER:-P1D', 'END:VALARM',
     'BEGIN:VALARM', 'ACTION:DISPLAY', 'DESCRIPTION:Recordatorio de tu cita', 'TRIGGER:-PT2H', 'END:VALARM',
     'END:VEVENT', 'END:VCALENDAR',
   ];

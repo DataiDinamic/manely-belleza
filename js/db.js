@@ -561,6 +561,66 @@ export async function restaurarDatos(copia) {
 }
 
 // =====================================================================
+// Mensajes programados («Añadir aviso» para mandar un mensaje a una clienta)
+// =====================================================================
+const CAMPOS_PROGRAMADO = ['clienta_id', 'cita_id', 'texto', 'medio', 'avisar_en', 'activo', 'enviado_en'];
+const SELECT_PROGRAMADO = '*, clientas(*), citas(id, fecha, hora_inicio, estado, token, duracion_min)';
+
+function unirProgramado(d, m) {
+  const c = d.citas.find((x) => x.id === m.cita_id);
+  return { ...m, clientas: d.clientas.find((x) => x.id === m.clienta_id) || null,
+    citas: c ? { id: c.id, fecha: c.fecha, hora_inicio: c.hora_inicio, estado: c.estado, token: c.token, duracion_min: c.duracion_min } : null };
+}
+function normalizarProgramado(m) {
+  return { ...m, clienta: m.clientas || null, cita: m.citas ? { ...m.citas, hora: horaCorta(m.citas.hora_inicio) } : null };
+}
+
+// pendientes: solo los no enviados; si no, también los enviados de los últimos 30 días
+export async function listarProgramados({ pendientes = false } = {}) {
+  let filas;
+  const desde = new Date(Date.now() - 30 * 864e5).toISOString();
+  if (modo === 'demo') {
+    const d = demo.leer();
+    filas = (d.programados || []).filter((m) => (pendientes ? !m.enviado_en : (!m.enviado_en || m.enviado_en >= desde))).map((m) => unirProgramado(d, m));
+  } else {
+    let q = sb.from('mensajes_programados').select(SELECT_PROGRAMADO).eq('negocio_id', N);
+    q = pendientes ? q.is('enviado_en', null) : q.or(`enviado_en.is.null,enviado_en.gte.${desde}`);
+    filas = comprobar(await q.order('avisar_en'));
+  }
+  return filas.map(normalizarProgramado).sort((a, b) => String(a.avisar_en).localeCompare(String(b.avisar_en)));
+}
+
+export async function guardarProgramado(datos) {
+  const fila = limpiar(datos, CAMPOS_PROGRAMADO);
+  if (!fila.texto) throw new Error('Falta el mensaje');
+  if (!fila.avisar_en) throw new Error('Falta cuándo avisar');
+  if (modo === 'demo') {
+    const d = demo.leer();
+    d.programados ||= [];
+    if (datos.id) Object.assign(d.programados.find((x) => x.id === datos.id), fila);
+    else d.programados.push({ id: uid(), activo: true, medio: 'whatsapp', enviado_en: null, ...fila, created_at: new Date().toISOString() });
+    demo.escribir(d); return;
+  }
+  if (datos.id) comprobar(await sb.from('mensajes_programados').update(fila).eq('id', datos.id));
+  else comprobar(await sb.from('mensajes_programados').insert({ ...fila, negocio_id: N }));
+}
+
+export async function guardarProgramados(lista) {
+  if (modo === 'demo') { for (const x of lista) await guardarProgramado(x); return; }
+  comprobar(await sb.from('mensajes_programados').insert(lista.map((x) => ({ ...limpiar(x, CAMPOS_PROGRAMADO), negocio_id: N }))));
+}
+
+export async function cambiarProgramado(id, cambios) {
+  if (modo === 'demo') { const d = demo.leer(); Object.assign((d.programados || []).find((x) => x.id === id) || {}, cambios); demo.escribir(d); return; }
+  comprobar(await sb.from('mensajes_programados').update(cambios).eq('id', id));
+}
+
+export async function borrarProgramado(id) {
+  if (modo === 'demo') { const d = demo.leer(); d.programados = (d.programados || []).filter((x) => x.id !== id); demo.escribir(d); return; }
+  comprobar(await sb.from('mensajes_programados').delete().eq('id', id));
+}
+
+// =====================================================================
 // Facturas
 // =====================================================================
 export async function emitirFactura(cobroId, tipo, receptor = {}) {

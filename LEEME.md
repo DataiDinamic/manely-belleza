@@ -1,4 +1,4 @@
-# Manely Belleza · app de gestión (alfa 0.9)
+# Manely Belleza · app de gestión (alfa 0.10)
 
 Agenda, clientas y servicios. Funciona en móvil, tablet y ordenador, y se instala como app desde el navegador.
 
@@ -143,6 +143,15 @@ No necesita SQL.
 - Si la clienta no tiene WhatsApp, la ventana del mensaje ofrece **SMS**.
 - **Llamar**: en un móvil llama directamente; en la tablet o el ordenador muestra un **código QR** que el móvil escanea para marcar. Se puede cambiar en *Ajustes → En este dispositivo → Llamadas y SMS*.
 
+## Versión 0.10: avisos para mandar mensajes y recordatorios de mañana
+
+**Instalación:** ejecutar `supabase/010_programados.sql` en el SQL Editor y subir los archivos.
+- **🔔 Añadir aviso** (botón lila en la ventana del mensaje de WhatsApp): en vez de mandarlo ahora, la app avisa con sonido a la hora elegida (24 h antes de la cita, 2 días antes, el día antes al abrir u otra hora) y enseña el mensaje: con un toque se abre WhatsApp (o el SMS) con el texto escrito y solo queda enviar. WhatsApp no permite que se envíe solo sin la API oficial de pago.
+- **Avisos → Tareas**: tabla con todos los avisos de mensajes (clienta, cita, cuándo avisa, mensaje, estado), para activarlos o desactivarlos, enviarlos ya, editarlos o borrarlos. **Añadir avisos a clientas** permite elegir varias citas a la vez (por ejemplo, las de la semana) con su recordatorio adaptado a cada una.
+- **Recordatorios de mañana**: cada día, la primera vez que la app está abierta dentro del horario (desde la hora de apertura de *Ajustes*), suena y aparece la lista de clientas del próximo día con citas, cada una con su botón de WhatsApp y el recordatorio escrito. Una vez al día por dispositivo; se puede desactivar en *Ajustes → Avisos* y abrir a mano desde ahí o desde Tareas.
+- Nuevo mensaje predefinido **Recordatorio el día antes** en *Ajustes → Mensajes de WhatsApp*.
+- El archivo de calendario que descarga la clienta avisa **24 horas** y 2 horas antes de la cita.
+
 ## Límites del plan gratuito de Supabase
 
 - El proyecto **se pausa tras una semana sin uso**; con uso diario no pasa. Si se pausa, se reactiva desde el panel.
@@ -168,6 +177,7 @@ js/avisos.js            avisos: fechas que se repiten, sonido y notificaciones
 js/copia.js             copia de seguridad: descargar e introducir datos
 js/mensajes.js          mensajes de WhatsApp a las clientas
 js/telefono.js          llamar y SMS (con código QR en tablet y ordenador)
+js/recordatorios.js     avisos de mensajes, varias clientas y recordatorios de mañana
 cita.html, js/cita-publica.js  página de la cita para la clienta (confirmar y calendario)
 js/fechas.js            fechas en hora local (sin desfases)
 js/vistas/*.js          agenda, caja, clientas, catálogo (servicios, productos, inventario), avisos (secretaria.js), ajustes
@@ -180,6 +190,7 @@ supabase/006_copias.sql      recuperar una copia de seguridad (0.7)
 supabase/007_mensajes.sql    mensajes de WhatsApp iguales en todos los dispositivos (0.8.1)
 supabase/008_whatsapp.sql    si la clienta tiene WhatsApp (0.8.2)
 supabase/009_respuestas.sql  enlace de la cita y respuesta de la clienta (0.9)
+supabase/010_programados.sql avisos para mandar mensajes a las clientas (0.10)
 sw.js, manifest         instalación como app
 ```
 

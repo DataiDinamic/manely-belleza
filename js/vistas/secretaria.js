@@ -2,7 +2,8 @@
 // cuota de autónomos, papeles al gestor…) o que son puntuales, con su aviso
 // previo y el registro de lo pagado o hecho.
 import * as db from '../db.js';
-import { esc, euros, abrirHoja, aviso, errorAviso, cargando, datosFormulario, confirmar } from '../util.js';
+import { esc, euros, abrirHoja, aviso, errorAviso, cargando, datosFormulario, confirmar, nombreCompleto } from '../util.js';
+import { textoFechaHora } from '../recordatorios.js';
 import { hoyISO, sumarDias, primeroDeMes, ultimoDeMes, sumarMeses, textoMes, textoDiaCorto, textoDiaLargo, desdeISO, isoDe } from '../fechas.js';
 import { confirmarConPin } from '../pin.js';
 import { pendientes, ocurrencias, proximaFecha, textoRepeticion, textoAntelacion, momentoAviso,
@@ -11,7 +12,7 @@ import { pendientes, ocurrencias, proximaFecha, textoRepeticion, textoAntelacion
 const numero = (v) => Number(String(v ?? '').replace(',', '.')) || 0;
 const coma = (v) => (v === null || v === undefined ? '' : String(v).replace('.', ','));
 const avisarCambio = () => window.dispatchEvent(new Event('mb:datos'));
-const PESTANAS = { total: 'Total', ...Object.fromEntries(Object.entries(PERIODOS).map(([k, p]) => [k, p.nombre])) };
+const PESTANAS = { tareas: 'Tareas', total: 'Total', ...Object.fromEntries(Object.entries(PERIODOS).map(([k, p]) => [k, p.nombre])) };
 const verbo = (o) => (o.importe ? 'Pagado' : 'Hecho');
 
 export async function render(el, sub) {
@@ -24,11 +25,12 @@ export async function render(el, sub) {
   const zona = el.querySelector('.sec-cuerpo');
   const recargar = () => { avisarCambio(); render(el, sub); };
 
-  let obs, items, regs;
+  let obs, items, regs, programados;
   const hoy = hoyISO();
   const iniMes = primeroDeMes(hoy), finMes = ultimoDeMes(hoy);
   try {
-    [obs, items, regs] = await Promise.all([db.listarObligaciones(), pendientes({ dias: 45 }), db.registrosObligaciones()]);
+    [obs, items, regs, programados] = await Promise.all([db.listarObligaciones(), pendientes({ dias: 45 }), db.registrosObligaciones(),
+      db.listarProgramados().catch(() => null)]);   // null: falta el SQL 010
   } catch (e) {
     console.error(e);
     zona.innerHTML = `<div class="tarjeta aviso-instalar"><h2>Falta un paso en Supabase</h2>
@@ -53,7 +55,8 @@ export async function render(el, sub) {
       prox: pend ? pend.fecha : o.activo === false ? null : proximaFecha(o, sumarDias(hoy, 46)) };
   });
   const enPestana = (f) => pestana === 'total' || f.periodo === pestana;
-  const cuenta = (k) => filas.filter((f) => (k === 'total' || f.periodo === k) && (f.o.activo !== false || f.periodo === 'puntual')).length;
+  const cuenta = (k) => (k === 'tareas' ? (programados || []).filter((m) => !m.enviado_en).length
+    : filas.filter((f) => (k === 'total' || f.periodo === k) && (f.o.activo !== false || f.periodo === 'puntual')).length);
 
   zona.innerHTML = `
     <div class="inv-resumen">
@@ -65,16 +68,89 @@ export async function render(el, sub) {
     <nav class="pestanas pestanas-avisos" aria-label="Periodos">
       ${Object.entries(PESTANAS).map(([k, t]) => `<a href="#avisos${k === 'total' ? '' : `/${k}`}" ${pestana === k ? 'aria-current="page"' : ''}>${t}${cuenta(k) ? ` <small>${cuenta(k)}</small>` : ''}</a>`).join('')}
     </nav>
-    <div class="av-acciones"><button class="btn btn-principal" data-nuevo>Gasto nuevo</button></div>
-    <div class="sec-pestana">${pintarLista(filas.filter(enPestana), pestana)}</div>`;
+    ${pestana === 'tareas' ? `<div class="av-acciones">
+        <button class="btn" data-manana>Recordatorios de mañana</button>
+        <button class="btn btn-lila" data-varias>🔔 Añadir avisos a clientas</button></div>
+      <div class="sec-pestana">${pintarTareas(programados)}</div>` : `
+      <div class="av-acciones"><button class="btn btn-principal" data-nuevo>Gasto nuevo</button></div>
+      <div class="sec-pestana">${pintarLista(filas.filter(enPestana), pestana)}</div>`}`;
 
-  el.querySelector('[data-nuevo]').addEventListener('click', () => formulario(null, pestana === 'total' ? 'mes' : pestana, recargar));
+  el.querySelector('[data-nuevo]')?.addEventListener('click', () => formulario(null, pestana === 'total' ? 'mes' : pestana, recargar));
+  if (pestana === 'tareas') return activarTareas(zona, programados || [], recargar, () => render(el, sub));
   el.querySelector('[data-pagado]').addEventListener('click', () => verPagado(obs, recargar));
   zona.querySelector('.sec-pestana').addEventListener('click', (e) => {
     const b = e.target.closest('button'); if (!b) return;
     const o = obs.find((x) => x.id === (b.dataset.hecho || b.dataset.ficha));
     if (b.dataset.hecho) return apuntarHecho(o, b.dataset.fecha, recargar);
     if (b.dataset.ficha) return ficha(o, recargar);
+  });
+}
+
+// ---------------------------------------------------------------------
+// Tareas: mensajes programados a las clientas («Añadir aviso»)
+// ---------------------------------------------------------------------
+function estadoTarea(m) {
+  if (m.enviado_en) return ['enviado', `Enviado ${textoFechaHora(new Date(m.enviado_en))}`];
+  if (!m.activo) return ['desactivado', 'Desactivado'];
+  if (new Date(m.avisar_en) <= new Date()) return ['avisando', 'Avisando: pendiente de enviar'];
+  return ['programado', 'Programado'];
+}
+
+function pintarTareas(lista) {
+  if (lista === null) return `<div class="tarjeta aviso-instalar"><h2>Falta un paso en Supabase</h2>
+    <p>Para programar avisos de mensajes hay que ejecutar una vez <strong>supabase/010_programados.sql</strong> en el SQL Editor de Supabase.</p></div>`;
+  if (!lista.length) return `<div class="vacio"><p>No hay avisos de mensajes. Pulsa <strong>Añadir avisos a clientas</strong> para elegir citas (una o varias), o <strong>🔔 Añadir aviso</strong> en la ventana del mensaje de WhatsApp de una cita.</p></div>`;
+  const pendientes = lista.filter((m) => !m.enviado_en), hechos = lista.filter((m) => m.enviado_en).reverse();
+  const fila = (m) => {
+    const [clase, texto] = estadoTarea(m);
+    return `<tr class="tarea-${clase}" data-id="${m.id}">
+      <td data-col="Activo"><label class="interruptor" title="${m.activo ? 'Desactivar' : 'Activar'}"><input type="checkbox" data-activo ${m.activo ? 'checked' : ''} ${m.enviado_en ? 'disabled' : ''}><span></span></label></td>
+      <td data-col="Clienta"><strong>${esc(nombreCompleto(m.clienta))}</strong>${m.medio === 'sms' || m.clienta?.whatsapp === false ? ' <small>SMS</small>' : ''}</td>
+      <td data-col="Cita">${m.cita ? `${esc(textoDiaCorto(m.cita.fecha))} · ${esc(m.cita.hora)}${m.cita.estado === 'anulada' ? ' <em class="aviso-texto">anulada</em>' : ''}` : '—'}</td>
+      <td data-col="Avisar">${esc(textoFechaHora(new Date(m.avisar_en)))}</td>
+      <td data-col="Mensaje" class="tarea-texto" title="${esc(m.texto)}">${esc(m.texto)}</td>
+      <td data-col="Estado"><span class="estado-tarea">${esc(texto)}</span></td>
+      <td class="tarea-acciones">
+        ${m.enviado_en ? '' : `<button class="btn btn-mini ${m.medio === 'sms' || m.clienta?.whatsapp === false ? 'btn-principal' : 'btn-whatsapp'}" data-enviar-ya>Enviar ya</button>`}
+        ${m.enviado_en ? '' : '<button class="btn btn-mini" data-editar>Editar</button>'}
+        <button class="btn-icono mov-borrar" data-borrar aria-label="Borrar">✕</button>
+      </td>
+    </tr>`;
+  };
+  const tabla = (filas, titulo) => `<section class="grupo-servicios"><h2>${titulo}</h2>
+    <table class="tabla-tareas"><thead><tr><th>Activo</th><th>Clienta</th><th>Cita</th><th>Avisar</th><th>Mensaje</th><th>Estado</th><th></th></tr></thead>
+    <tbody>${filas.map(fila).join('')}</tbody></table></section>`;
+  return (pendientes.length ? tabla(pendientes, `Pendientes (${pendientes.length})`) : '<div class="vacio"><p>No queda ningún mensaje pendiente.</p></div>')
+    + (hechos.length ? tabla(hechos, 'Enviados (últimos 30 días)') : '');
+}
+
+function activarTareas(zona, lista, recargar, repintar) {
+  // Si se envía un mensaje desde un aviso (o cambia algo), la tabla se actualiza sola
+  let espera = null;
+  const alCambiar = () => {
+    if (!zona.isConnected) return window.removeEventListener('mb:datos', alCambiar);
+    clearTimeout(espera); espera = setTimeout(() => { window.removeEventListener('mb:datos', alCambiar); repintar(); }, 300);
+  };
+  window.addEventListener('mb:datos', alCambiar);
+  zona.querySelector('[data-varias]').addEventListener('click', async () => { const r = await import('../recordatorios.js'); r.programarVarias(recargar); });
+  zona.querySelector('[data-manana]').addEventListener('click', async () => { const r = await import('../recordatorios.js'); r.recordatoriosDeManana({ automatico: false }); });
+  const tabla = zona.querySelector('.sec-pestana');
+  tabla.addEventListener('change', async (e) => {
+    const chk = e.target.closest('[data-activo]'); if (!chk) return;
+    const id = chk.closest('tr').dataset.id;
+    try { await db.cambiarProgramado(id, { activo: chk.checked }); aviso(chk.checked ? 'Aviso activado' : 'Aviso desactivado'); recargar(); }
+    catch (err) { errorAviso(err); chk.checked = !chk.checked; }
+  });
+  tabla.addEventListener('click', async (e) => {
+    const b = e.target.closest('button'); if (!b) return;
+    const tr = b.closest('tr'); if (!tr) return;
+    const m = lista.find((x) => x.id === tr.dataset.id);
+    const r = await import('../recordatorios.js');
+    if (b.hasAttribute('data-enviar-ya')) { await r.enviarProgramado(m); return recargar(); }
+    if (b.hasAttribute('data-editar')) return r.programarMensaje({ clienta: m.clienta, cita: m.cita, texto: m.texto, medio: m.medio, programado: m, alGuardar: recargar });
+    if (b.hasAttribute('data-borrar') && await confirmar('¿Borrar este aviso?', { detalle: `Mensaje para ${nombreCompleto(m.clienta)}.`, si: 'Borrar', peligro: true })) {
+      try { await db.borrarProgramado(m.id); aviso('Aviso borrado'); recargar(); } catch (err) { errorAviso(err); }
+    }
   });
 }
 

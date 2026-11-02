@@ -63,12 +63,14 @@ export async function render(el, { cuenta, alSalir }) {
         <div class="fila-2">
           <label class="check"><input type="checkbox" name="activos" ${av.activos ? 'checked' : ''}> Avisar en este dispositivo</label>
           <label class="check"><input type="checkbox" name="sonido" ${av.sonido ? 'checked' : ''}> Con sonido</label>
+          <label class="check"><input type="checkbox" name="recordatorioDiario" ${av.recordatorioDiario !== false ? 'checked' : ''}> Recordatorios de mañana al empezar la jornada (a la hora de apertura)</label>
 
         </div>
         <p class="texto-suave">Notificaciones del sistema (para verlas con la app en segundo plano): <strong class="estado-permiso">${textoPermiso}</strong></p>
         <div class="acciones-form">
           <button class="btn btn-principal">Guardar</button>
           <button type="button" class="btn" data-a="probar-aviso">Probar aviso</button>
+          <button type="button" class="btn" data-a="recordatorios">Ver recordatorios de mañana</button>
           ${permiso === 'default' ? '<button type="button" class="btn" data-a="notificaciones">Permitir notificaciones</button>' : ''}
         </div>
       </form>
@@ -126,7 +128,7 @@ export async function render(el, { cuenta, alSalir }) {
           <button type="button" class="btn btn-whatsapp" data-enviar="whatsapp">Enviar por WhatsApp</button>
         </div>
       </section>
-      <p class="texto-suave version">Manely Belleza · versión alfa 0.9</p>
+      <p class="texto-suave version">Manely Belleza · versión alfa 0.10</p>
     </section>`;
 
   el.querySelector('[data-form="negocio"]').addEventListener('submit', async (e) => {
@@ -166,12 +168,13 @@ export async function render(el, { cuenta, alSalir }) {
   el.querySelector('[data-form="avisos"]').addEventListener('submit', (e) => {
     e.preventDefault();
     const d = datosFormulario(e.target);
-    guardarAjustesAvisos({ activos: d.activos, sonido: d.sonido });
+    guardarAjustesAvisos({ activos: d.activos, sonido: d.sonido, recordatorioDiario: d.recordatorioDiario });
     aviso('Avisos guardados');
   });
   el.addEventListener('click', async (e) => {
     const a = e.target.closest('[data-a]')?.dataset.a;
     if (a === 'probar-aviso') probar();
+    if (a === 'recordatorios') { const r = await import('../recordatorios.js'); r.recordatoriosDeManana({ automatico: false }); }
     if (a === 'descargar-datos') { if (await descargarCopia()) render(el, { cuenta, alSalir }); }
     if (a === 'introducir-datos') introducirCopia();
     const enviar = e.target.closest('[data-enviar]')?.dataset.enviar;

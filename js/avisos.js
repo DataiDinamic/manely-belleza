@@ -246,7 +246,7 @@ async function notificar(titulo, cuerpo, clave) {
 // ---------------------------------------------------------------------
 // Motor: revisa cada 20 segundos qué toca avisar
 // ---------------------------------------------------------------------
-let datos = { items: [], citas: [], respuestas: [], cargado: 0 };
+let datos = { items: [], citas: [], respuestas: [], programados: [], cargado: 0 };
 let reloj = null, recarga = null, activo = false;
 let enPantalla = new Map();   // clave -> aviso mostrado
 let repiques = 0, temporizadorRepique = null;
@@ -261,7 +261,10 @@ export function iniciar() {
   window.addEventListener('mb:datos', refrescarPronto);
   window.addEventListener('hashchange', pintarInsignia);
   // Al bloquear o desbloquear con el PIN cambian los botones de los avisos
-  observador ||= new MutationObserver(() => { if (enPantalla.size) pintarAlarmas(); });
+  observador ||= new MutationObserver(() => {
+    if (enPantalla.size) pintarAlarmas();
+    if (activo && !document.body.classList.contains('bloqueada')) comprobarRecordatorioDiario();   // al desbloquear con el PIN
+  });
   observador.observe(document.body, { attributes: true, attributeFilter: ['class'] });
 }
 let observador = null;
@@ -282,11 +285,12 @@ export async function refrescar() {
   if (!activo) return;
   try {
     const hoy = hoyISO();
-    const [items, citas] = await Promise.all([
+    const [items, citas, programados] = await Promise.all([
       pendientes({ dias: 60 }).catch(() => []),   // si falta el SQL 005, sin gastos
       db.citasEntre(hoy, sumarDias(hoy, 31)),
+      db.listarProgramados({ pendientes: true }).catch(() => []),   // si falta el SQL 010, sin mensajes programados
     ]);
-    datos = { items, citas: citas.filter((c) => c.aviso_min !== null && c.aviso_min !== undefined && ['pendiente', 'confirmada'].includes(c.estado)),
+    datos = { items, programados, citas: citas.filter((c) => c.aviso_min !== null && c.aviso_min !== undefined && ['pendiente', 'confirmada'].includes(c.estado)),
       respuestas: citas.filter((c) => c.respuesta && c.respuesta_en && ['pendiente', 'confirmada'].includes(c.estado)), cargado: Date.now() };
   } catch (e) { console.warn('Avisos:', e); }
   revisar();
@@ -303,6 +307,12 @@ function porAvisar() {
     if (ahora < avisa || ahora > inicio.getTime() + 15 * 60000) continue;   // ya pasó la cita: no molestar
     const clave = `c:${c.id}:${c.fecha}T${c.hora}:${c.aviso_min}`;
     if (toca(v, clave, ahora)) lista.push({ clave, tipo: 'cita', c, inicio });
+  }
+  // Mensajes programados («Añadir aviso») cuya hora ha llegado
+  for (const m of datos.programados || []) {
+    if (!m.activo || m.enviado_en || new Date(m.avisar_en).getTime() > ahora) continue;
+    const clave = `m:${m.id}:${m.avisar_en}`;
+    if (toca(v, clave, ahora)) lista.push({ clave, tipo: 'msg', m });
   }
   // La clienta ha respondido desde su enlace (avisa una vez, durante 3 días)
   for (const c of datos.respuestas || []) {
@@ -351,6 +361,12 @@ function faltan(inicio) {
 
 export function describir(a) {
   if (a.tipo === 'prueba') return { icono: '🔔', titulo: 'Aviso de prueba', texto: 'Así sonarán y se verán los avisos.', extra: '' };
+  if (a.tipo === 'msg') {
+    const m = a.m;
+    return { icono: '💬', titulo: `Mandar mensaje a ${nombreCompleto(m.clienta)}`,
+      texto: m.cita ? `Su cita: ${textoDiaLargo(m.cita.fecha)} a las ${m.cita.hora}` : 'Mensaje programado',
+      extra: m.texto.length > 160 ? `${m.texto.slice(0, 160)}…` : m.texto };
+  }
   if (a.tipo === 'resp') {
     const c = a.c;
     return { icono: c.respuesta === 'si' ? '✅' : '❌',
@@ -378,6 +394,7 @@ const capital = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 function revisar() {
   pintarInsignia();
   if (!activo || !ajustesAvisos().activos) return;
+  comprobarRecordatorioDiario();
   const nuevos = porAvisar().filter((a) => !enPantalla.has(a.clave));
   if (!nuevos.length) return;
   for (const a of nuevos) enPantalla.set(a.clave, a);
@@ -385,6 +402,23 @@ function revisar() {
   repiques = 0;
   repicar();
   if (document.hidden) for (const a of nuevos) { const d = describir(a); notificar(d.titulo, d.texto, a.clave); }
+}
+
+// «Recordatorios de mañana»: al empezar la jornada (o al abrir la app por
+// primera vez en el día, dentro del horario), una vez al día
+let comprobandoDiario = false;
+async function comprobarRecordatorioDiario() {
+  const aj = ajustesAvisos();
+  if (comprobandoDiario || !aj.activos || aj.recordatorioDiario === false) return;
+  if (!document.body.classList.contains('con-app') || document.body.classList.contains('bloqueada')) return;
+  comprobandoDiario = true;
+  try {
+    const r = await import('./recordatorios.js');
+    if (!r.tocaRecordatorioDiario()) return;
+    r.apuntarRecordatorioDiario();
+    await r.recordatoriosDeManana({ automatico: true, alAbrir: () => sonar() });
+  } catch (e) { console.warn('Recordatorios de mañana:', e); }
+  finally { comprobandoDiario = false; }
 }
 
 // Suena hasta 3 veces (cada 20 s) mientras nadie toque el aviso
@@ -419,6 +453,7 @@ function pintarAlarmas() {
           ${a.tipo === 'resp' ? '' : '<button class="btn btn-mini" data-posponer="10">10 min más</button>'}
           ${!bloqueada && a.tipo === 'ob' && a.it.o.id ? `<button class="btn btn-mini" data-hecho>${a.it.o.importe ? 'Pagado' : 'Hecho'}</button>` : ''}
           ${!bloqueada && (a.tipo === 'cita' || a.tipo === 'resp') ? '<button class="btn btn-mini" data-ver>Ver cita</button>' : ''}
+          ${!bloqueada && a.tipo === 'msg' ? `<button class="btn btn-mini ${a.m.medio === 'sms' || a.m.clienta?.whatsapp === false ? 'btn-principal' : 'btn-whatsapp'}" data-enviar-msg>${a.m.medio === 'sms' || a.m.clienta?.whatsapp === false ? 'Enviar SMS' : 'Enviar por WhatsApp'}</button>` : ''}
           <button class="btn btn-mini btn-principal" data-vale>Vale</button>
         </div>
       </article>`;
@@ -441,6 +476,10 @@ async function alPulsar(e) {
   if (b.dataset.posponer) marcar(clave, Date.now() + Number(b.dataset.posponer) * 60000);
   else marcar(clave);
   pintarAlarmas();
+  if (b.hasAttribute('data-enviar-msg')) {
+    const { enviarProgramado } = await import('./recordatorios.js');
+    return enviarProgramado(a.m);
+  }
   if (b.hasAttribute('data-ver')) {
     const { abrirDetalleCita } = await import('./citas.js');
     abrirDetalleCita(a.c.id, () => window.dispatchEvent(new Event('mb:datos')));
@@ -455,7 +494,8 @@ async function alPulsar(e) {
 function pintarInsignia() {
   const enlace = document.querySelector('[data-seccion="avisos"]');
   if (!enlace) return;
-  const n = datos.items.filter((it) => (it.avisa && it.avisa <= new Date()) || it.vence <= new Date()).length;
+  const n = datos.items.filter((it) => (it.avisa && it.avisa <= new Date()) || it.vence <= new Date()).length
+    + (datos.programados || []).filter((m) => m.activo && !m.enviado_en && new Date(m.avisar_en) <= new Date()).length;
   let b = enlace.querySelector('.insignia-nav');
   if (!n) { b?.remove(); return; }
   if (!b) { b = document.createElement('b'); b.className = 'insignia-nav'; enlace.appendChild(b); }
