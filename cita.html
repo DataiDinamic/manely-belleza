@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#18151C">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Tu cita · Manely Belleza</title>
+  <link rel="icon" type="image/png" href="iconos/icon-192.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=Gloock&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/app.css">
+  <style>
+    body { background: var(--fondo); }
+    .pub { max-width: 520px; margin: 0 auto; padding: 20px 16px 40px; }
+    .pub-marca { display: flex; align-items: center; gap: 10px; margin-bottom: 18px; }
+    .pub-marca img { border-radius: 50%; }
+    .pub-marca b { font-family: var(--serif); font-weight: 400; font-size: 1.3rem; }
+    .pub h1 { font-family: var(--serif); font-weight: 400; font-size: 1.9rem; margin: 0 0 6px; }
+    .pub-cita { background: var(--papel); border: 1px solid var(--linea); border-radius: 16px; padding: 16px 18px; margin: 14px 0; }
+    .pub-cita .cuando { font-size: 1.15rem; font-weight: 700; margin: 0 0 4px; }
+    .pub-cita .que { margin: 0 0 10px; color: var(--tinta-2); }
+    .pub-cita .donde { margin: 0; color: var(--suave); font-size: .92rem; }
+    .pub-cita a { color: var(--violeta); }
+    .pub-botones { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 16px 0; }
+    .pub-botones .btn { min-height: 58px; font-size: 1.05rem; }
+    .pub-estado { padding: 14px 16px; border-radius: 14px; font-weight: 600; margin: 14px 0; }
+    .pub-estado.si { background: var(--exito-fondo); color: var(--exito); }
+    .pub-estado.no { background: var(--peligro-fondo); color: var(--peligro); }
+    .pub-estado.info { background: var(--lavanda-2); color: var(--violeta-osc); }
+    .pub h2 { font-size: 1rem; margin: 22px 0 8px; }
+    .pub-cal { display: grid; gap: 8px; }
+    .pub-cal .btn { justify-content: center; min-height: 50px; }
+    .pub-pie { margin-top: 28px; color: var(--suave); font-size: .85rem; text-align: center; }
+  </style>
+</head>
+<body>
+  <main class="pub" id="pub"><p class="texto-suave">Cargando tu cita…</p></main>
+  <div id="aviso" class="aviso" role="status" aria-live="polite"></div>
+  <script type="module" src="js/cita-publica.js"></script>
+</body>
+</html>

@@ -1,4 +1,4 @@
-# Manely Belleza · app de gestión (alfa 0.8.2)
+# Manely Belleza · app de gestión (alfa 0.9)
 
 Agenda, clientas y servicios. Funciona en móvil, tablet y ordenador, y se instala como app desde el navegador.
 
@@ -134,6 +134,15 @@ No necesita SQL.
 - En la ficha de la clienta y en la de la cita, junto a **WhatsApp**, botón **📹 Videollamada**: abre el chat de la clienta en WhatsApp y allí se toca la cámara para empezar la videollamada (WhatsApp no permite que otra app la inicie sola).
 - Casilla **Tiene WhatsApp** en la ficha de la clienta (Editar ficha) y al crearla. Si no lo tiene, los botones de WhatsApp y videollamada salen apagados y aparece «Sin WhatsApp». Las clientas que ya existían quedan como que sí lo tienen.
 
+## Versión 0.9: la clienta confirma y guarda la cita en su calendario
+
+**Instalación:** ejecutar `supabase/009_respuestas.sql` en el SQL Editor y subir los archivos (incluido `cita.html`).
+- Cada cita tiene un **enlace propio y secreto** (`cita.html?t=…`). Al guardar una cita nueva se abre sola la ventana del mensaje de WhatsApp con ese enlace añadido (se puede desactivar en *Ajustes → Mensajes de WhatsApp*). Eli solo pulsa enviar en WhatsApp.
+- Con el enlace, la clienta ve su cita (día, hora, tratamientos, dirección) sin entrar en la app, pulsa **Asistiré** o **No podré ir**, y la **añade a su calendario** (Google Calendar o un archivo .ics para iPhone, Samsung, Outlook…, con recordatorio 2 horas antes).
+- La respuesta llega a la app: «Asistiré» confirma la cita; con «No podré ir» salta un aviso a Eli (la cita no se anula sola). En la agenda y en la ficha se ve «✓ Confirmada por ella» o «✗ Avisa que no vendrá». Si la cita cambia de día u hora, la respuesta se borra y conviene mandar el enlace de nuevo.
+- Si la clienta no tiene WhatsApp, la ventana del mensaje ofrece **SMS**.
+- **Llamar**: en un móvil llama directamente; en la tablet o el ordenador muestra un **código QR** que el móvil escanea para marcar. Se puede cambiar en *Ajustes → En este dispositivo → Llamadas y SMS*.
+
 ## Límites del plan gratuito de Supabase
 
 - El proyecto **se pausa tras una semana sin uso**; con uso diario no pasa. Si se pausa, se reactiva desde el panel.
@@ -158,6 +167,8 @@ js/importar.js          pantalla de importación de citas
 js/avisos.js            avisos: fechas que se repiten, sonido y notificaciones
 js/copia.js             copia de seguridad: descargar e introducir datos
 js/mensajes.js          mensajes de WhatsApp a las clientas
+js/telefono.js          llamar y SMS (con código QR en tablet y ordenador)
+cita.html, js/cita-publica.js  página de la cita para la clienta (confirmar y calendario)
 js/fechas.js            fechas en hora local (sin desfases)
 js/vistas/*.js          agenda, caja, clientas, catálogo (servicios, productos, inventario), avisos (secretaria.js), ajustes
 supabase/001_fase1.sql  tablas, reglas de seguridad y funciones (fase 1)
@@ -168,6 +179,7 @@ supabase/005_secretaria.sql  avisos: gastos y obligaciones que se repiten (0.6)
 supabase/006_copias.sql      recuperar una copia de seguridad (0.7)
 supabase/007_mensajes.sql    mensajes de WhatsApp iguales en todos los dispositivos (0.8.1)
 supabase/008_whatsapp.sql    si la clienta tiene WhatsApp (0.8.2)
+supabase/009_respuestas.sql  enlace de la cita y respuesta de la clienta (0.9)
 sw.js, manifest         instalación como app
 ```
 

@@ -127,7 +127,7 @@ function htmlBloque(c, ini, ppm, { semana = false } = {}) {
     style="--esmalte:${esc(c.clienta?.color || '#B5838D')};top:${(c.inicio - ini) * ppm}px;height:${alturaPx}px;
            left:calc(${(c._col / c._cols) * 100}% + 2px);width:calc(${100 / c._cols}% - 4px)"
     aria-label="${c.hora} ${esc(nombreCompleto(c.clienta))}, ${esc(textoServicios(c))}, ${ESTADOS[c.estado]}">
-    <span class="cb-hora">${c.hora}</span>
+    <span class="cb-hora">${c.hora}${c.respuesta === 'si' ? ' <i class="cb-resp si" title="Ha confirmado">✓</i>' : c.respuesta === 'no' ? ' <i class="cb-resp no" title="Ha avisado que no vendrá">✗ no vendrá</i>' : ''}</span>
     <span class="cb-nombre">${esc(semana ? (c.clienta?.nombre || '') : nombreCompleto(c.clienta))}</span>
     ${compacto ? '' : `<span class="cb-servicios">${esc(textoServicios(c))}</span>`}
   </button>`;
@@ -265,7 +265,7 @@ async function pintarDia(zona) {
             <li><button data-cita="${c.id}" class="estado-${c.estado}" style="--esmalte:${esc(c.clienta?.color || '#B5838D')}">
               <time>${c.hora}</time>
               <span><strong>${esc(nombreCompleto(c.clienta))}</strong><small>${esc(textoServicios(c))}</small></span>
-              <em class="${c.cobrada ? 'em-cobrada' : ''}">${c.cobrada ? 'Cobrada' : c.estado === 'confirmada' ? '' : esc(ESTADOS[c.estado])}</em>
+              <em class="${c.cobrada ? 'em-cobrada' : c.respuesta === 'no' && !['anulada', 'realizada'].includes(c.estado) ? 'em-no-viene' : ''}">${c.cobrada ? 'Cobrada' : c.respuesta === 'no' && !['anulada', 'realizada'].includes(c.estado) ? '✗ Avisa que no vendrá' : c.respuesta === 'si' && c.estado === 'confirmada' ? '✓ Confirmada por ella' : c.estado === 'confirmada' ? '' : esc(ESTADOS[c.estado])}</em>
             </button></li>`).join('')}
         </ol>
         ${anuladas ? `<label class="check"><input type="checkbox" data-anuladas ${st.anuladas ? 'checked' : ''}> Ver anuladas (${anuladas})</label>` : ''}

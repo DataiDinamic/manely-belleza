@@ -5,7 +5,8 @@ import { esc, euros, nombreCompleto, abrirHoja, confirmar, pedirTexto, aviso, er
 import { hoyISO, aMinutos, aHora, textoDiaLargo, duracionTexto, horaCorta } from './fechas.js';
 import { abrirCobro, abrirDetalleCobro, textoPagos } from './caja.js';
 import { textoMinutosAntes } from './avisos.js';
-import { abrirMensajeWhatsApp, abrirVideollamada, tieneWhatsApp } from './mensajes.js';
+import { abrirMensajeWhatsApp, abrirVideollamada, tieneWhatsApp, mensajeAlCrear } from './mensajes.js';
+import { llamar } from './telefono.js';
 
 const OPCIONES_AVISO = [null, 5, 15, 30, 60, 1440];
 const cambioDatos = () => window.dispatchEvent(new Event('mb:datos'));
@@ -241,6 +242,11 @@ export async function abrirFormularioCita({ cita = null, fecha = hoyISO(), hora 
       cambioDatos();
       cerrar();
       alGuardar?.(id, datos);
+      // Cita nueva: preparar el mensaje para la clienta (con el enlace para confirmar y guardarla en su calendario)
+      if (!cita && mensajeAlCrear() && estado.clienta?.telefono) {
+        try { const nueva = await db.obtenerCita(id); abrirMensajeWhatsApp({ clienta: nueva.clienta || estado.clienta, cita: nueva, alConfirmar: () => alGuardar?.(id, datos) }); }
+        catch (e) { console.warn('Mensaje tras crear la cita:', e); }
+      }
     } catch (err) { errorAviso(err); }
     finally { cargando(false); }
   });
@@ -302,6 +308,7 @@ export async function abrirDetalleCita(id, alCambiar) {
         <p class="detalle-cuando">${esc(textoDiaLargo(c.fecha))} · ${c.hora}–${aHora(c.fin)}</p>
         <h2 class="hoja-titulo">${cl ? `<a href="#clientas/${cl.id}" data-cerrar>${esc(nombreCompleto(cl))}</a>` : 'Clienta eliminada'}</h2>
         <span class="estado estado-${c.estado}">${ESTADOS[c.estado]}</span>
+        ${c.respuesta ? `<span class="respuesta respuesta-${c.respuesta}">${c.respuesta === 'si' ? '✓ Ha confirmado que viene' : '✗ Ha avisado: no vendrá'}</span>` : ''}
 
       </div>
       <button type="button" class="btn-icono" data-cerrar aria-label="Cerrar">✕</button>
@@ -321,7 +328,7 @@ export async function abrirDetalleCita(id, alCambiar) {
       ${activa ? `<button type="button" class="btn boton-aviso ${c.aviso_min !== null && c.aviso_min !== undefined ? 'con-aviso' : ''}" data-aviso>
         🔔 Aviso previo: <b>${esc(textoMinutosAntes(c.aviso_min ?? null))}</b></button>` : ''}
       ${cl?.telefono ? `<div class="contacto">
-        <a class="btn" href="tel:${esc(cl.telefono.replace(/\s/g, ''))}">Llamar</a>
+        <button type="button" class="btn" data-llamar>Llamar</button>
         ${botonesWhatsApp(cl)}
       </div>` : ''}
     </div>
@@ -338,6 +345,7 @@ export async function abrirDetalleCita(id, alCambiar) {
     </footer>`, { ancho: 'normal' });
 
   el.querySelector('[data-video]')?.addEventListener('click', () => abrirVideollamada(cl));
+  el.querySelector('[data-llamar]')?.addEventListener('click', () => llamar(cl));
   el.querySelector('[data-whatsapp]')?.addEventListener('click', () => abrirMensajeWhatsApp({ clienta: c.clienta, cita: c, alConfirmar: () => { cerrar(); alCambiar?.(); } }));
 
   el.querySelector('[data-aviso]')?.addEventListener('click', async (e) => {

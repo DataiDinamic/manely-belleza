@@ -6,6 +6,7 @@ import { hoyISO, textoFecha, textoDiaCorto } from '../fechas.js';
 import { abrirFormularioCita, abrirDetalleCita, ESTADOS, textoServicios, botonesWhatsApp } from '../citas.js';
 import { abrirDetalleCobro, textoPagos } from '../caja.js';
 import { abrirMensajeWhatsApp, proximasCitas, abrirVideollamada } from '../mensajes.js';
+import { llamar } from '../telefono.js';
 
 let filtro = '';
 let verArchivadas = false;
@@ -100,7 +101,7 @@ async function renderFicha(contenedor, id) {
         </div>
         <div class="ficha-acciones">
           <button class="btn btn-principal" data-a="cita">Nueva cita</button>
-          ${c.telefono ? `<a class="btn" href="tel:${esc(c.telefono.replace(/\s/g, ''))}">Llamar</a>` : ''}
+          ${c.telefono ? '<button class="btn" data-a="llamar">Llamar</button>' : ''}
           ${botonesWhatsApp(c, { atributoMensaje: 'data-a="whatsapp"', atributoVideo: 'data-a="video"' })}
           <button class="btn" data-a="editar">Editar ficha</button>
         </div>
@@ -163,6 +164,7 @@ async function renderFicha(contenedor, id) {
     if (!a) return;
     if (a === 'cita') abrirFormularioCita({ clientaId: c.id, alGuardar: recargar });
     if (a === 'video') abrirVideollamada(c);
+    if (a === 'llamar') llamar(c);
     if (a === 'whatsapp') abrirMensajeWhatsApp({ clienta: c, citas: proximasCitas(citas), alConfirmar: recargar });
     if (a === 'editar') abrirFormularioClienta(c, recargar);
     if (a === 'archivar') {

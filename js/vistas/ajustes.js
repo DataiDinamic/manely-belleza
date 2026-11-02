@@ -4,7 +4,7 @@ import { esc, aviso, errorAviso, cargando, datosFormulario, confirmar } from '..
 import { leerAjustes, guardarAjustes } from '../ajustes.js';
 import { cambiarPin, fijarMinutosBloqueo, bloquearYa } from '../pin.js';
 import { elegirArchivo } from '../importar.js';
-import { ORIGINALES, TITULOS, HUECOS, leerMensaje, guardarMensajes } from '../mensajes.js';
+import { ORIGINALES, TITULOS, HUECOS, leerMensaje, guardarMensajes, mensajeAlCrear, fijarMensajeAlCrear } from '../mensajes.js';
 import { descargarCopia, introducirCopia, ultimaCopia, enviarCopia } from '../copia.js';
 import { ajustesAvisos, guardarAjustesAvisos, probar, notificacionesPosibles, pedirPermisoNotificaciones } from '../avisos.js';
 
@@ -41,9 +41,11 @@ export async function render(el, { cuenta, alSalir }) {
 
       <form class="tarjeta" data-form="dispositivo">
         <h2>En este dispositivo</h2>
-        <div class="fila-3">
+        <div class="fila-2">
           <label class="campo"><span>La agenda empieza a las</span><input type="time" name="apertura" step="1800" value="${esc(aj.apertura)}"></label>
           <label class="campo"><span>y termina a las</span><input type="time" name="cierre" step="1800" value="${esc(aj.cierre)}"></label>
+          <label class="campo"><span>Llamadas y SMS</span>
+            <select name="llamadas">${[['auto', 'Automático'], ['aqui', 'Desde este dispositivo'], ['qr', 'Con código QR para el móvil']].map(([k, v]) => `<option value="${k}" ${(aj.llamadas || 'auto') === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
           <label class="campo"><span>Bloquear tras</span>
             <select name="bloqueo">${[1, 2, 5, 10, 15, 30].map((m) => `<option value="${m}" ${Number(aj.bloqueo) === m ? 'selected' : ''}>${m} min sin usar</option>`).join('')}</select></label>
         </div>
@@ -81,6 +83,7 @@ export async function render(el, { cuenta, alSalir }) {
             <textarea name="${k}" rows="4">${esc(leerMensaje(k))}</textarea>
             <button type="button" class="enlace" data-original="${k}">Volver al original</button>
           </div>`).join('')}
+        <label class="check"><input type="checkbox" name="al_crear" ${mensajeAlCrear() ? 'checked' : ''}> Al guardar una cita nueva, preparar el mensaje para la clienta (con el enlace para que confirme si viene y la guarde en su calendario)</label>
         <div class="acciones-form"><button class="btn btn-principal">Guardar mensajes</button></div>
       </form>
 
@@ -123,7 +126,7 @@ export async function render(el, { cuenta, alSalir }) {
           <button type="button" class="btn btn-whatsapp" data-enviar="whatsapp">Enviar por WhatsApp</button>
         </div>
       </section>
-      <p class="texto-suave version">Manely Belleza · versión alfa 0.8.2</p>
+      <p class="texto-suave version">Manely Belleza · versión alfa 0.9</p>
     </section>`;
 
   el.querySelector('[data-form="negocio"]').addEventListener('submit', async (e) => {
@@ -135,7 +138,7 @@ export async function render(el, { cuenta, alSalir }) {
     e.preventDefault();
     const d = datosFormulario(e.target);
     if (d.cierre <= d.apertura) return aviso('La hora de cierre tiene que ser posterior a la de apertura.', 'error');
-    guardarAjustes({ apertura: d.apertura, cierre: d.cierre, bloqueo: Number(d.bloqueo) });
+    guardarAjustes({ apertura: d.apertura, cierre: d.cierre, bloqueo: Number(d.bloqueo), llamadas: d.llamadas });
     fijarMinutosBloqueo(d.bloqueo);
     aviso('Ajustes guardados');
   });
@@ -155,6 +158,7 @@ export async function render(el, { cuenta, alSalir }) {
     e.preventDefault();
     try {
       cargando(true);
+      fijarMensajeAlCrear(fm.elements.al_crear.checked);
       const r = await guardarMensajes(Object.fromEntries(Object.keys(ORIGINALES).map((k) => [k, fm.elements[k].value])));
       aviso(r === 'todos' ? 'Mensajes guardados para todos los dispositivos' : 'Mensajes guardados en este dispositivo (falta ejecutar supabase/007_mensajes.sql para que sean iguales en todos)', r === 'todos' ? 'ok' : 'error');
     } catch (err) { errorAviso(err); } finally { cargando(false); }

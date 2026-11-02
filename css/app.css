@@ -984,3 +984,13 @@ body.moviendo-cita { user-select: none; -webkit-user-select: none; }
 .medio-mensaje { margin-bottom: 12px; }
 .btn-whatsapp:disabled, .btn-whatsapp[disabled] { background: #ECE8F0; border-color: #DDD6E4; color: #9A92A3; cursor: not-allowed; opacity: 1; }
 .sin-whatsapp { align-self: center; font-size: .78rem; font-weight: 700; padding: 3px 10px; border-radius: 999px; background: #EEEBF1; color: var(--suave); white-space: nowrap; }
+
+/* Respuesta de la clienta (0.9) */
+.respuesta { display: inline-block; margin-left: 6px; font-size: .78rem; font-weight: 700; padding: 3px 10px; border-radius: 999px; }
+.respuesta-si { background: var(--exito-fondo); color: var(--exito); }
+.respuesta-no { background: var(--peligro-fondo); color: var(--peligro); }
+.cb-resp { font-style: normal; font-weight: 800; }
+.cb-resp.si { color: var(--exito); }
+.cb-resp.no { color: #fff; background: var(--peligro); border-radius: 999px; padding: 0 6px; font-size: .72rem; }
+.lista-dia em.em-no-viene { color: var(--peligro); font-weight: 700; }
+.medio-mensaje button:disabled { opacity: .4; cursor: not-allowed; }

@@ -63,8 +63,8 @@ export function rellenar(plantilla, { clienta, cita }) {
 export function abrirMensajeWhatsApp({ clienta, cita = null, citas = [], alConfirmar }) {
   const tel = telefonoWhatsApp(clienta?.telefono);
   if (!tel) return aviso('Esta clienta no tiene teléfono.', 'error');
-  if (clienta.whatsapp === false) return aviso('Esta clienta no tiene WhatsApp. Si se lo ha instalado, márcalo en «Editar ficha».', 'error');
-  let medio = clienta?.whatsapp === false ? 'sms' : 'whatsapp';
+  const sinWhatsApp = clienta.whatsapp === false;
+  let medio = sinWhatsApp ? 'sms' : 'whatsapp';
   const opciones = cita ? [cita] : citas;
   let actual = opciones[0] || null;
   const { el, cerrar } = abrirHoja(`
@@ -76,7 +76,7 @@ export function abrirMensajeWhatsApp({ clienta, cita = null, citas = [], alConfi
       </header>
       <div class="hoja-cuerpo">
         <div class="segmentos medio-mensaje" role="radiogroup" aria-label="Enviar por">
-          <button type="button" data-medio="whatsapp">WhatsApp</button>
+          <button type="button" data-medio="whatsapp" ${sinWhatsApp ? 'disabled title="No tiene WhatsApp"' : ''}>WhatsApp</button>
           <button type="button" data-medio="sms">SMS</button>
         </div>
         ${clienta?.whatsapp === false ? '<p class="texto-suave">Esta clienta no tiene WhatsApp.</p>' : ''}
@@ -85,6 +85,7 @@ export function abrirMensajeWhatsApp({ clienta, cita = null, citas = [], alConfi
           <option value="general">Mensaje general (sin cita)</option></select></label>` : ''}
         <label class="campo"><span>Mensaje (se puede cambiar antes de enviarlo)</span>
           <textarea name="texto" rows="6"></textarea></label>
+        <label class="check con-enlace" hidden><input type="checkbox" name="enlace" checked> Incluir el enlace para que confirme si viene y la guarde en su calendario</label>
         <label class="check confirmar-cita" hidden><input type="checkbox" name="confirmar" checked> Marcar la cita como confirmada</label>
         <p class="texto-suave">Los mensajes predefinidos se cambian en <a href="#ajustes" data-cerrar>Ajustes → Mensajes de WhatsApp</a>.</p>
       </div>
@@ -105,10 +106,23 @@ export function abrirMensajeWhatsApp({ clienta, cita = null, citas = [], alConfi
     const b = e.target.closest('[data-medio]'); if (b) { medio = b.dataset.medio; pintarMedio(); }
   });
   pintarMedio();
+  // Línea con el enlace de la cita (se añade o se quita con la casilla)
+  const lineaEnlace = () => (actual?.token ? `\n\nConfirma si vienes y guárdala en tu calendario aquí: ${enlaceCita(actual)}` : '');
+  const ponerEnlace = () => {
+    const t = f.elements.texto;
+    const linea = lineaEnlace();
+    const sin = t.value.replace(/\n*Confirma si vienes y guárdala en tu calendario aquí: \S+/, '');
+    t.value = f.elements.enlace.checked && linea ? sin.replace(/\s+$/, '') + linea : sin;
+  };
   const pintar = () => {
     f.elements.texto.value = rellenar(leerMensaje(actual ? 'cita' : 'general'), { clienta, cita: actual });
     el.querySelector('.confirmar-cita').hidden = !(actual && actual.estado === 'pendiente');
+    el.querySelector('.con-enlace').hidden = !actual?.token;
+    // Con el enlace, la cita se confirma cuando ella responda; sin él, se puede marcar ya
+    f.elements.confirmar.checked = !actual?.token;
+    ponerEnlace();
   };
+  f.elements.enlace.addEventListener('change', ponerEnlace);
   f.elements.sobre?.addEventListener('change', (e) => { actual = e.target.value === 'general' ? null : citas[Number(e.target.value)]; pintar(); });
   pintar();
   setTimeout(() => { const t = f.elements.texto; t.focus(); t.setSelectionRange(t.value.length, t.value.length); }, 120);
@@ -131,6 +145,17 @@ export function abrirMensajeWhatsApp({ clienta, cita = null, citas = [], alConfi
     }
   });
 }
+
+// Enlace de la página de la cita para la clienta (cita.html)
+export function enlaceCita(cita) {
+  const base = location.origin + location.pathname.replace(/[^/]*$/, '');
+  return `${base}cita.html?t=${cita.token}${db.modo === 'demo' ? '&demo' : ''}`;
+}
+
+// ¿Preparar el mensaje al guardar una cita nueva? (por dispositivo; sí por defecto)
+const CLAVE_AL_CREAR = 'mb_mensaje_al_crear_v1';
+export function mensajeAlCrear() { try { return localStorage.getItem(CLAVE_AL_CREAR) !== 'no'; } catch { return true; } }
+export function fijarMensajeAlCrear(si) { try { localStorage.setItem(CLAVE_AL_CREAR, si ? 'si' : 'no'); } catch { /* */ } }
 
 // Próximas citas activas de una clienta (para el botón WhatsApp de su ficha)
 export function proximasCitas(citas) {

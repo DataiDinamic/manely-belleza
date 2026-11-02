@@ -246,7 +246,7 @@ async function notificar(titulo, cuerpo, clave) {
 // ---------------------------------------------------------------------
 // Motor: revisa cada 20 segundos qué toca avisar
 // ---------------------------------------------------------------------
-let datos = { items: [], citas: [], cargado: 0 };
+let datos = { items: [], citas: [], respuestas: [], cargado: 0 };
 let reloj = null, recarga = null, activo = false;
 let enPantalla = new Map();   // clave -> aviso mostrado
 let repiques = 0, temporizadorRepique = null;
@@ -256,7 +256,7 @@ export function iniciar() {
   activo = true;
   refrescar();
   reloj = setInterval(revisar, 20000);
-  recarga = setInterval(refrescar, 5 * 60000);
+  recarga = setInterval(refrescar, 2 * 60000);
   document.addEventListener('visibilitychange', alVolver);
   window.addEventListener('mb:datos', refrescarPronto);
   window.addEventListener('hashchange', pintarInsignia);
@@ -286,7 +286,8 @@ export async function refrescar() {
       pendientes({ dias: 60 }).catch(() => []),   // si falta el SQL 005, sin gastos
       db.citasEntre(hoy, sumarDias(hoy, 31)),
     ]);
-    datos = { items, citas: citas.filter((c) => c.aviso_min !== null && c.aviso_min !== undefined && ['pendiente', 'confirmada'].includes(c.estado)), cargado: Date.now() };
+    datos = { items, citas: citas.filter((c) => c.aviso_min !== null && c.aviso_min !== undefined && ['pendiente', 'confirmada'].includes(c.estado)),
+      respuestas: citas.filter((c) => c.respuesta && c.respuesta_en && ['pendiente', 'confirmada'].includes(c.estado)), cargado: Date.now() };
   } catch (e) { console.warn('Avisos:', e); }
   revisar();
 }
@@ -302,6 +303,13 @@ function porAvisar() {
     if (ahora < avisa || ahora > inicio.getTime() + 15 * 60000) continue;   // ya pasó la cita: no molestar
     const clave = `c:${c.id}:${c.fecha}T${c.hora}:${c.aviso_min}`;
     if (toca(v, clave, ahora)) lista.push({ clave, tipo: 'cita', c, inicio });
+  }
+  // La clienta ha respondido desde su enlace (avisa una vez, durante 3 días)
+  for (const c of datos.respuestas || []) {
+    const cuando = new Date(c.respuesta_en).getTime();
+    if (ahora - cuando > 3 * 864e5) continue;
+    const clave = `r:${c.id}:${c.respuesta_en}`;
+    if (toca(v, clave, ahora)) lista.push({ clave, tipo: 'resp', c });
   }
   const hoy = hoyISO();
   for (const it of datos.items) {
@@ -343,6 +351,13 @@ function faltan(inicio) {
 
 export function describir(a) {
   if (a.tipo === 'prueba') return { icono: '🔔', titulo: 'Aviso de prueba', texto: 'Así sonarán y se verán los avisos.', extra: '' };
+  if (a.tipo === 'resp') {
+    const c = a.c;
+    return { icono: c.respuesta === 'si' ? '✅' : '❌',
+      titulo: `${nombreCompleto(c.clienta)} ${c.respuesta === 'si' ? 'confirma que viene' : 'avisa que NO vendrá'}`,
+      texto: `${textoDiaLargo(c.fecha)} a las ${c.hora} · ${c.servicios.map((s) => s.nombre).join(', ')}`,
+      extra: c.respuesta === 'no' ? 'Puedes anular la cita o escribirle para buscar otro día.' : '' };
+  }
   if (a.tipo === 'cita') {
     const c = a.c;
     return { icono: '💅', titulo: `Cita ${faltan(a.inicio)} · ${c.hora}`,
@@ -401,9 +416,9 @@ function pintarAlarmas() {
         <span class="alarma-icono" aria-hidden="true">${d.icono}</span>
         <div class="alarma-texto"><strong>${esc(d.titulo)}</strong><p>${esc(d.texto)}</p>${d.extra ? `<small>${esc(d.extra)}</small>` : ''}</div>
         <div class="alarma-botones">
-          <button class="btn btn-mini" data-posponer="10">10 min más</button>
+          ${a.tipo === 'resp' ? '' : '<button class="btn btn-mini" data-posponer="10">10 min más</button>'}
           ${!bloqueada && a.tipo === 'ob' && a.it.o.id ? `<button class="btn btn-mini" data-hecho>${a.it.o.importe ? 'Pagado' : 'Hecho'}</button>` : ''}
-          ${!bloqueada && a.tipo === 'cita' ? '<button class="btn btn-mini" data-ver>Ver cita</button>' : ''}
+          ${!bloqueada && (a.tipo === 'cita' || a.tipo === 'resp') ? '<button class="btn btn-mini" data-ver>Ver cita</button>' : ''}
           <button class="btn btn-mini btn-principal" data-vale>Vale</button>
         </div>
       </article>`;

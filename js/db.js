@@ -619,7 +619,7 @@ export async function guardarCita(cita, servicios) {
 // Mover una cita a otro día u hora (sin tocar sus servicios)
 export async function moverCita(id, fecha, hora) {
   const cambios = { fecha, hora_inicio: `${hora}:00` };
-  if (modo === 'demo') return demo.actualizar('citas', id, cambios);
+  if (modo === 'demo') return demo.actualizar('citas', id, { ...cambios, respuesta: null, respuesta_en: null });
   comprobar(await sb.from('citas').update(cambios).eq('id', id));
 }
 
@@ -658,6 +658,7 @@ const demo = {
         if (!d.facturas) { d.facturas = []; this.escribir(d); }
         if (!d.consumibles) { const s = semillaInventario(); d.consumibles = s.consumibles; d.movimientos = s.movimientos; this.escribir(d); }
         if (!d.obligaciones) { const s = semillaSecretaria(); d.obligaciones = s.obligaciones; d.registros = s.registros; this.escribir(d); }
+        if (d.citas.some((c) => !c.token)) { d.citas.forEach((c) => { c.token ||= uid(); }); this.escribir(d); }
         return d;
       }
     } catch { /* vacío */ }
@@ -831,12 +832,13 @@ const demo = {
     const ahora = new Date().toISOString();
     if (cita.id) {
       const c = d.citas.find((x) => x.id === cita.id);
+      if (c.fecha !== cita.fecha || String(c.hora_inicio).slice(0, 5) !== String(cita.hora_inicio).slice(0, 5)) { c.respuesta = null; c.respuesta_en = null; }
       Object.assign(c, { ...cita, estado: cita.estado || c.estado, duracion_min: dur, cita_servicios: lineas, updated_at: ahora });
       this.escribir(d);
       return c.id;
     }
     const id = uid();
-    d.citas.push({ ...cita, id, estado: cita.estado || 'pendiente', duracion_min: dur, cita_servicios: lineas, created_at: ahora, updated_at: ahora });
+    d.citas.push({ ...cita, id, token: uid(), estado: cita.estado || 'pendiente', duracion_min: dur, cita_servicios: lineas, created_at: ahora, updated_at: ahora });
     this.escribir(d);
     return id;
   },
@@ -929,7 +931,7 @@ function semilla() {
   const hoy = hoyISO();
   const linea = (sv) => ({ id: uid(), servicio_id: sv.id, nombre: sv.nombre, precio: sv.precio, iva_pct: 21, duracion_min: sv.duracion_min, orden: 0 });
   const cita = (cl, fecha, hora, svs, estado = 'confirmada') => ({
-    id: uid(), clienta_id: cl.id, fecha, hora_inicio: hora + ':00',
+    id: uid(), token: uid(), clienta_id: cl.id, fecha, hora_inicio: hora + ':00',
     duracion_min: svs.reduce((a, x) => a + x.duracion_min, 0), estado, notas: '',
     cita_servicios: svs.map((x, i) => ({ ...linea(x), orden: i })),
   });
