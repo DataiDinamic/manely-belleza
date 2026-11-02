@@ -3,8 +3,9 @@ import * as db from '../db.js';
 import { esc, euros, nombreCompleto, iniciales, abrirHoja, confirmar, aviso, errorAviso, cargando,
   telefonoWhatsApp, ESMALTES, esmalteAleatorio, datosFormulario } from '../util.js';
 import { hoyISO, textoFecha, textoDiaCorto } from '../fechas.js';
-import { abrirFormularioCita, abrirDetalleCita, ESTADOS, textoServicios } from '../citas.js';
+import { abrirFormularioCita, abrirDetalleCita, ESTADOS, textoServicios, botonesWhatsApp } from '../citas.js';
 import { abrirDetalleCobro, textoPagos } from '../caja.js';
+import { abrirMensajeWhatsApp, proximasCitas, abrirVideollamada } from '../mensajes.js';
 
 let filtro = '';
 let verArchivadas = false;
@@ -100,7 +101,7 @@ async function renderFicha(contenedor, id) {
         <div class="ficha-acciones">
           <button class="btn btn-principal" data-a="cita">Nueva cita</button>
           ${c.telefono ? `<a class="btn" href="tel:${esc(c.telefono.replace(/\s/g, ''))}">Llamar</a>` : ''}
-          ${tel ? `<a class="btn" href="https://wa.me/${tel}" target="_blank" rel="noopener">WhatsApp</a>` : ''}
+          ${botonesWhatsApp(c, { atributoMensaje: 'data-a="whatsapp"', atributoVideo: 'data-a="video"' })}
           <button class="btn" data-a="editar">Editar ficha</button>
         </div>
       </header>
@@ -161,6 +162,8 @@ async function renderFicha(contenedor, id) {
     const a = e.target.closest('[data-a]')?.dataset.a;
     if (!a) return;
     if (a === 'cita') abrirFormularioCita({ clientaId: c.id, alGuardar: recargar });
+    if (a === 'video') abrirVideollamada(c);
+    if (a === 'whatsapp') abrirMensajeWhatsApp({ clienta: c, citas: proximasCitas(citas), alConfirmar: recargar });
     if (a === 'editar') abrirFormularioClienta(c, recargar);
     if (a === 'archivar') {
       const ok = c.archivada || await confirmar(`¿Archivar a ${nombreCompleto(c)}?`, {
@@ -195,6 +198,7 @@ export function abrirFormularioClienta(c, alGuardar) {
           <label class="campo"><span>Teléfono</span><input name="telefono" type="tel" inputmode="tel" value="${esc(c.telefono || '')}"></label>
           <label class="campo"><span>Email</span><input name="email" type="email" inputmode="email" value="${esc(c.email || '')}"></label>
         </div>
+        <label class="check"><input type="checkbox" name="whatsapp" ${c.whatsapp !== false ? 'checked' : ''}> Tiene WhatsApp</label>
         <fieldset class="campo">
           <legend>Color en la agenda</legend>
           <div class="esmaltes">

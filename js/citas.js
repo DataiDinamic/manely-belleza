@@ -5,6 +5,7 @@ import { esc, euros, nombreCompleto, abrirHoja, confirmar, pedirTexto, aviso, er
 import { hoyISO, aMinutos, aHora, textoDiaLargo, duracionTexto, horaCorta } from './fechas.js';
 import { abrirCobro, abrirDetalleCobro, textoPagos } from './caja.js';
 import { textoMinutosAntes } from './avisos.js';
+import { abrirMensajeWhatsApp, abrirVideollamada, tieneWhatsApp } from './mensajes.js';
 
 const OPCIONES_AVISO = [null, 5, 15, 30, 60, 1440];
 const cambioDatos = () => window.dispatchEvent(new Event('mb:datos'));
@@ -255,6 +256,7 @@ async function altaRapidaClienta(textoInicial) {
         <label class="campo"><span>Nombre</span><input name="nombre" required autofocus value="${soloNumeros ? '' : esc(textoInicial)}"></label>
         <label class="campo"><span>Apellidos</span><input name="apellidos"></label>
         <label class="campo"><span>Teléfono</span><input name="telefono" type="tel" inputmode="tel" value="${soloNumeros ? esc(textoInicial) : ''}"></label>
+        <label class="check"><input type="checkbox" name="whatsapp" checked> Tiene WhatsApp</label>
         <label class="check"><input type="checkbox" name="consentimiento_datos"> Acepta que guardemos sus datos para gestionar sus citas</label>
         <p class="texto-suave">Podrás completar la ficha más tarde desde Clientas.</p>
         <div class="hoja-pie sin-borde">
@@ -271,7 +273,7 @@ async function altaRapidaClienta(textoInicial) {
         cargando(true);
         const nueva = await db.guardarClienta({
           nombre: f.nombre.value.trim(), apellidos: f.apellidos.value.trim(), telefono: f.telefono.value.trim(),
-          color: esmalteAleatorio(), consentimiento_datos: f.consentimiento_datos.checked,
+          color: esmalteAleatorio(), whatsapp: f.whatsapp.checked, consentimiento_datos: f.consentimiento_datos.checked,
           consentimiento_fecha: f.consentimiento_datos.checked ? new Date().toISOString() : null,
         });
         hecho = true; resolve(nueva); cerrar();
@@ -320,7 +322,7 @@ export async function abrirDetalleCita(id, alCambiar) {
         🔔 Aviso previo: <b>${esc(textoMinutosAntes(c.aviso_min ?? null))}</b></button>` : ''}
       ${cl?.telefono ? `<div class="contacto">
         <a class="btn" href="tel:${esc(cl.telefono.replace(/\s/g, ''))}">Llamar</a>
-        ${tel ? '<button type="button" class="btn btn-whatsapp" data-whatsapp>WhatsApp</button>' : ''}
+        ${botonesWhatsApp(cl)}
       </div>` : ''}
     </div>
     <footer class="hoja-pie acciones-cita">
@@ -335,7 +337,8 @@ export async function abrirDetalleCita(id, alCambiar) {
       ${!activa && !c.cobrada ? '<button class="btn" data-a="pendiente">Volver a pendiente</button>' : ''}
     </footer>`, { ancho: 'normal' });
 
-  el.querySelector('[data-whatsapp]')?.addEventListener('click', () => mensajeWhatsApp(c, tel, () => { cerrar(); alCambiar?.(); }));
+  el.querySelector('[data-video]')?.addEventListener('click', () => abrirVideollamada(cl));
+  el.querySelector('[data-whatsapp]')?.addEventListener('click', () => abrirMensajeWhatsApp({ clienta: c.clienta, cita: c, alConfirmar: () => { cerrar(); alCambiar?.(); } }));
 
   el.querySelector('[data-aviso]')?.addEventListener('click', async (e) => {
     const boton = e.currentTarget;
@@ -383,105 +386,14 @@ export async function abrirDetalleCita(id, alCambiar) {
   });
 }
 
-// ---------------------------------------------------------------------
-// Mensaje de WhatsApp a la clienta: se prepara con el mensaje predefinido,
-// se puede cambiar y se abre WhatsApp con el texto ya escrito.
-// ---------------------------------------------------------------------
-const CLAVE_PLANTILLA = 'mb_plantilla_whatsapp_v1';
-export const PLANTILLA_WHATSAPP = '¡Buenas! Te confirmo la cita para [tratamientos], el día [día] a las [hora]. Para cualquier cosa escríbeme aquí y lo arreglo lo antes posible. Gracias.';
-export function leerPlantilla() {
-  try { return localStorage.getItem(CLAVE_PLANTILLA) || PLANTILLA_WHATSAPP; } catch { return PLANTILLA_WHATSAPP; }
-}
-function guardarPlantilla(texto) {
-  try { texto && texto !== PLANTILLA_WHATSAPP ? localStorage.setItem(CLAVE_PLANTILLA, texto) : localStorage.removeItem(CLAVE_PLANTILLA); } catch { /* */ }
-}
-const enumerar = (l) => (l.length > 1 ? `${l.slice(0, -1).join(', ')} y ${l.at(-1)}` : l[0] || '');
-export function rellenarPlantilla(plantilla, c) {
-  const datos = {
-    nombre: c.clienta?.nombre || '',
-    tratamientos: enumerar(c.servicios.map((x) => x.nombre.trim())),
-    'día': textoDiaLargo(c.fecha).replace(',', ''),
-    dia: textoDiaLargo(c.fecha).replace(',', ''),
-    hora: c.hora,
-  };
-  return plantilla.replace(/\[(nombre|tratamientos|día|dia|hora)\]/gi, (m, k) => datos[k.toLowerCase()] ?? m);
-}
-
-function mensajeWhatsApp(c, tel, alConfirmar) {
-  const pendiente = c.estado === 'pendiente';
-  const { el, cerrar } = abrirHoja(`
-    <form novalidate>
-      <header class="hoja-cabecera">
-        <div><h2 class="hoja-titulo">Mensaje por WhatsApp</h2>
-          <p class="texto-suave">Para ${esc(nombreCompleto(c.clienta))} · ${esc(c.clienta?.telefono || '')}</p></div>
-        <button type="button" class="btn-icono" data-cerrar aria-label="Cerrar">✕</button>
-      </header>
-      <div class="hoja-cuerpo">
-        <label class="campo"><span>Mensaje (se puede cambiar)</span>
-          <textarea name="texto" rows="6">${esc(rellenarPlantilla(leerPlantilla(), c))}</textarea></label>
-        ${pendiente ? '<label class="check"><input type="checkbox" name="confirmar" checked> Marcar la cita como confirmada</label>' : ''}
-        <button type="button" class="enlace" data-plantilla>Cambiar el mensaje predefinido</button>
-      </div>
-      <footer class="hoja-pie">
-        <button type="button" class="btn" data-cerrar>Cancelar</button>
-        <button class="btn btn-whatsapp">Abrir WhatsApp</button>
-      </footer>
-    </form>`, { ancho: 'normal' });
-  const f = el.querySelector('form');
-  el.querySelector('[data-plantilla]').addEventListener('click', async () => {
-    const nueva = await editarPlantilla();
-    if (nueva !== null) f.elements.texto.value = rellenarPlantilla(nueva, c);
-  });
-  f.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const texto = f.elements.texto.value.trim();
-    if (!texto) return aviso('Escribe el mensaje.', 'error');
-    // Se abre WhatsApp con el mensaje escrito: solo queda pulsar «Enviar» allí
-    window.open(`https://wa.me/${tel}?text=${encodeURIComponent(texto)}`, '_blank', 'noopener');
-    cerrar();
-    if (pendiente && f.elements.confirmar?.checked) {
-      try { await db.cambiarEstadoCita(c.id, 'confirmada'); cambioDatos(); aviso('Cita confirmada'); alConfirmar?.(); }
-      catch (err) { errorAviso(err); }
-    }
-  });
-}
-
-function editarPlantilla() {
-  return new Promise((resolve) => {
-    let hecho = false;
-    const { el, cerrar } = abrirHoja(`
-      <form novalidate>
-        <header class="hoja-cabecera">
-          <h2 class="hoja-titulo">Mensaje predefinido</h2>
-          <button type="button" class="btn-icono" data-cerrar aria-label="Cerrar">✕</button>
-        </header>
-        <div class="hoja-cuerpo">
-          <p class="texto-suave">Las palabras entre corchetes se cambian solas por los datos de cada cita. Toca una para añadirla donde esté el cursor:</p>
-          <div class="huecos">${['[nombre]', '[tratamientos]', '[día]', '[hora]'].map((h) => `<button type="button" class="chip-hueco" data-hueco="${h}">${h}</button>`).join('')}</div>
-          <label class="campo"><span>Mensaje</span><textarea name="plantilla" rows="6">${esc(leerPlantilla())}</textarea></label>
-        </div>
-        <footer class="hoja-pie">
-          <button type="button" class="btn pie-izquierda" data-original>Volver al original</button>
-          <button type="button" class="btn" data-cerrar>Cancelar</button>
-          <button class="btn btn-principal">Guardar</button>
-        </footer>
-      </form>`, { ancho: 'normal', alCerrar: () => { if (!hecho) resolve(null); } });
-    const ta = el.querySelector('textarea');
-    el.querySelector('.huecos').addEventListener('click', (e) => {
-      const b = e.target.closest('[data-hueco]'); if (!b) return;
-      const i = ta.selectionStart ?? ta.value.length, j = ta.selectionEnd ?? i;
-      ta.value = ta.value.slice(0, i) + b.dataset.hueco + ta.value.slice(j);
-      ta.focus(); ta.setSelectionRange(i + b.dataset.hueco.length, i + b.dataset.hueco.length);
-    });
-    el.querySelector('[data-original]').addEventListener('click', () => { ta.value = PLANTILLA_WHATSAPP; });
-    el.querySelector('form').addEventListener('submit', (e) => {
-      e.preventDefault();
-      const texto = ta.value.trim() || PLANTILLA_WHATSAPP;
-      guardarPlantilla(texto);
-      hecho = true; resolve(texto); cerrar();
-      aviso('Mensaje predefinido guardado');
-    });
-  });
+// Botones de WhatsApp (mensaje y videollamada); apagados si la clienta no tiene WhatsApp
+export function botonesWhatsApp(cl, { atributoMensaje = 'data-whatsapp', atributoVideo = 'data-video' } = {}) {
+  if (!cl?.telefono) return '';
+  const si = tieneWhatsApp(cl);
+  const off = si ? '' : 'disabled title="No tiene WhatsApp"';
+  return `<button type="button" class="btn btn-whatsapp" ${atributoMensaje} ${off}>WhatsApp</button>
+    <button type="button" class="btn btn-whatsapp" ${atributoVideo} ${off}>📹 Videollamada</button>
+    ${si ? '' : '<span class="sin-whatsapp">Sin WhatsApp</span>'}`;
 }
 
 // Elegir el aviso previo de una cita. Devuelve los minutos, null (sin aviso) o undefined (cancelado)

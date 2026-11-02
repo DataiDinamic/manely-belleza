@@ -120,7 +120,7 @@ export async function guardarNegocio(datos) {
 // =====================================================================
 const CAMPOS_CLIENTA = ['nombre', 'apellidos', 'telefono', 'email', 'nif', 'direccion', 'cp', 'poblacion',
   'fecha_nacimiento', 'color', 'preferencias', 'notas', 'notas_salud', 'consentimiento_datos',
-  'consentimiento_salud', 'consentimiento_comunicaciones', 'consentimiento_fecha', 'archivada'];
+  'consentimiento_salud', 'consentimiento_comunicaciones', 'consentimiento_fecha', 'archivada', 'whatsapp'];
 
 function limpiar(obj, campos) {
   const o = {};
@@ -145,8 +145,15 @@ export async function guardarClienta(datos) {
   if (!fila.nombre) throw new Error('Falta el nombre');
   if (!fila.consentimiento_salud) fila.notas_salud = null;
   if (modo === 'demo') return demo.guardar('clientas', { ...fila, id: datos.id });
-  if (datos.id) return comprobar(await sb.from('clientas').update(fila).eq('id', datos.id).select().single());
-  return comprobar(await sb.from('clientas').insert({ ...fila, negocio_id: N }).select().single());
+  const guardar = async (f) => (datos.id
+    ? comprobar(await sb.from('clientas').update(f).eq('id', datos.id).select().single())
+    : comprobar(await sb.from('clientas').insert({ ...f, negocio_id: N }).select().single()));
+  try { return await guardar(fila); } catch (e) {
+    // Si aún no se ha ejecutado el SQL 008, se guarda sin el dato de WhatsApp
+    if (!/whatsapp/i.test(e.message) || !('whatsapp' in fila)) throw e;
+    const { whatsapp, ...resto } = fila;
+    return guardar(resto);
+  }
 }
 
 // =====================================================================
@@ -575,7 +582,7 @@ export async function facturaDeCobro(cobroId) {
 // =====================================================================
 // Citas
 // =====================================================================
-const SELECT_CITA = '*, cita_servicios(*), clientas(id, nombre, apellidos, color, telefono, preferencias, notas), cobros(id, total, anulado)';
+const SELECT_CITA = '*, cita_servicios(*), clientas(*), cobros(id, total, anulado)';
 
 export async function citasEntre(desde, hasta) {
   let filas;
@@ -917,7 +924,7 @@ function semilla() {
     c('Rocío', 'Benítez Ruiz', '612 345 678', '#C2185B', 'Siempre rojo cereza. Forma almendra, largo medio.'),
     c('Carmen', 'Ortega', '655 111 222', '#7FB7A4', 'Tonos nude. No le gusta la purpurina.', 'Prefiere citas a primera hora.'),
     c('Lucía', 'Moreno Gil', '699 876 543', '#9C89B8', 'Francesa clásica en pies.'),
-    c('Inma', 'Castro', '622 908 070', '#D4A373', 'Lima suave, cutícula sensible.'),
+    { ...c('Inma', 'Castro', '622 908 070', '#D4A373', 'Lima suave, cutícula sensible.'), whatsapp: false },
   ];
   const hoy = hoyISO();
   const linea = (sv) => ({ id: uid(), servicio_id: sv.id, nombre: sv.nombre, precio: sv.precio, iva_pct: 21, duracion_min: sv.duracion_min, orden: 0 });

@@ -1,4 +1,4 @@
-# Manely Belleza · app de gestión (alfa 0.8)
+# Manely Belleza · app de gestión (alfa 0.8.2)
 
 Agenda, clientas y servicios. Funciona en móvil, tablet y ordenador, y se instala como app desde el navegador.
 
@@ -122,6 +122,18 @@ No necesita SQL.
 - **Duración en horas y minutos** al crear o editar una cita y en los servicios del Catálogo (p. ej. 1 h 30 min).
 - **Copia de seguridad**: además de Descargar e Introducir, botones **Enviar a Drive**, **Enviar por email** y **Enviar por WhatsApp**. En el móvil y la tablet abren el menú «Compartir» con el archivo ya adjunto (allí se elige Drive, Gmail o WhatsApp y el contacto). En un ordenador que no pueda compartir archivos, se descarga y se abre Drive, el correo o WhatsApp Web para adjuntarlo.
 
+## Versión 0.8.1: mensajes de WhatsApp en Ajustes
+
+**Instalación:** ejecutar `supabase/007_mensajes.sql` en el SQL Editor y subir los archivos.
+- **Ajustes → Mensajes de WhatsApp**: el mensaje para confirmar una cita y un mensaje general, con [nombre], [tratamientos], [día] y [hora]. Se guardan en el negocio: son los mismos en la tablet, el móvil y el ordenador.
+- El botón **WhatsApp** de la **ficha de la clienta** abre también la ventana con el mensaje preparado y editable (antes abría WhatsApp directamente). Si la clienta tiene citas próximas, se elige sobre cuál escribir o el mensaje general.
+
+## Versión 0.8.2: videollamada y «Tiene WhatsApp»
+
+**Instalación:** ejecutar `supabase/008_whatsapp.sql` en el SQL Editor y subir los archivos.
+- En la ficha de la clienta y en la de la cita, junto a **WhatsApp**, botón **📹 Videollamada**: abre el chat de la clienta en WhatsApp y allí se toca la cámara para empezar la videollamada (WhatsApp no permite que otra app la inicie sola).
+- Casilla **Tiene WhatsApp** en la ficha de la clienta (Editar ficha) y al crearla. Si no lo tiene, los botones de WhatsApp y videollamada salen apagados y aparece «Sin WhatsApp». Las clientas que ya existían quedan como que sí lo tienen.
+
 ## Límites del plan gratuito de Supabase
 
 - El proyecto **se pausa tras una semana sin uso**; con uso diario no pasa. Si se pausa, se reactiva desde el panel.
@@ -145,6 +157,7 @@ js/ics.js               lectura de calendarios .ics (Google Calendar)
 js/importar.js          pantalla de importación de citas
 js/avisos.js            avisos: fechas que se repiten, sonido y notificaciones
 js/copia.js             copia de seguridad: descargar e introducir datos
+js/mensajes.js          mensajes de WhatsApp a las clientas
 js/fechas.js            fechas en hora local (sin desfases)
 js/vistas/*.js          agenda, caja, clientas, catálogo (servicios, productos, inventario), avisos (secretaria.js), ajustes
 supabase/001_fase1.sql  tablas, reglas de seguridad y funciones (fase 1)
@@ -153,6 +166,8 @@ supabase/003_facturas.sql    facturas con numeración correlativa (0.3)
 supabase/004_inventario.sql  inventario de material (0.5)
 supabase/005_secretaria.sql  avisos: gastos y obligaciones que se repiten (0.6)
 supabase/006_copias.sql      recuperar una copia de seguridad (0.7)
+supabase/007_mensajes.sql    mensajes de WhatsApp iguales en todos los dispositivos (0.8.1)
+supabase/008_whatsapp.sql    si la clienta tiene WhatsApp (0.8.2)
 sw.js, manifest         instalación como app
 ```
 

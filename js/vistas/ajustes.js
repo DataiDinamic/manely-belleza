@@ -4,6 +4,7 @@ import { esc, aviso, errorAviso, cargando, datosFormulario, confirmar } from '..
 import { leerAjustes, guardarAjustes } from '../ajustes.js';
 import { cambiarPin, fijarMinutosBloqueo, bloquearYa } from '../pin.js';
 import { elegirArchivo } from '../importar.js';
+import { ORIGINALES, TITULOS, HUECOS, leerMensaje, guardarMensajes } from '../mensajes.js';
 import { descargarCopia, introducirCopia, ultimaCopia, enviarCopia } from '../copia.js';
 import { ajustesAvisos, guardarAjustesAvisos, probar, notificacionesPosibles, pedirPermisoNotificaciones } from '../avisos.js';
 
@@ -70,6 +71,19 @@ export async function render(el, { cuenta, alSalir }) {
         </div>
       </form>
 
+      <form class="tarjeta" data-form="mensajes">
+        <h2>Mensajes de WhatsApp</h2>
+        <p class="texto-suave">Son los mensajes que salen preparados al pulsar <strong>WhatsApp</strong> en una cita o en la ficha de una clienta. Antes de enviarlo siempre se puede cambiar. Las palabras entre corchetes se cambian solas por los datos de cada clienta y cita: toca una para añadirla donde esté el cursor.</p>
+        ${Object.keys(ORIGINALES).map((k) => `
+          <div class="campo">
+            <span>${esc(TITULOS[k])}</span>
+            <div class="huecos">${HUECOS[k].map((h) => `<button type="button" class="chip-hueco" data-hueco="${h}" data-para="${k}">${h}</button>`).join('')}</div>
+            <textarea name="${k}" rows="4">${esc(leerMensaje(k))}</textarea>
+            <button type="button" class="enlace" data-original="${k}">Volver al original</button>
+          </div>`).join('')}
+        <div class="acciones-form"><button class="btn btn-principal">Guardar mensajes</button></div>
+      </form>
+
       <section class="tarjeta">
         <h2>Pasar citas desde Google Calendar</h2>
         <ol class="pasos-importar">
@@ -109,12 +123,12 @@ export async function render(el, { cuenta, alSalir }) {
           <button type="button" class="btn btn-whatsapp" data-enviar="whatsapp">Enviar por WhatsApp</button>
         </div>
       </section>
-      <p class="texto-suave version">Manely Belleza · versión alfa 0.8</p>
+      <p class="texto-suave version">Manely Belleza · versión alfa 0.8.2</p>
     </section>`;
 
   el.querySelector('[data-form="negocio"]').addEventListener('submit', async (e) => {
     e.preventDefault();
-    try { cargando(true); await db.guardarNegocio({ ...n, ...datosFormulario(e.target) }); aviso('Datos del centro guardados'); }
+    try { cargando(true); await db.guardarNegocio(datosFormulario(e.target)); aviso('Datos del centro guardados'); }
     catch (err) { errorAviso(err); } finally { cargando(false); }
   });
   el.querySelector('[data-form="dispositivo"]').addEventListener('submit', (e) => {
@@ -124,6 +138,26 @@ export async function render(el, { cuenta, alSalir }) {
     guardarAjustes({ apertura: d.apertura, cierre: d.cierre, bloqueo: Number(d.bloqueo) });
     fijarMinutosBloqueo(d.bloqueo);
     aviso('Ajustes guardados');
+  });
+  const fm = el.querySelector('[data-form="mensajes"]');
+  fm.addEventListener('click', (e) => {
+    const h = e.target.closest('[data-hueco]');
+    if (h) {
+      const ta = fm.elements[h.dataset.para];
+      const i = ta.selectionStart ?? ta.value.length, j = ta.selectionEnd ?? i;
+      ta.value = ta.value.slice(0, i) + h.dataset.hueco + ta.value.slice(j);
+      ta.focus(); ta.setSelectionRange(i + h.dataset.hueco.length, i + h.dataset.hueco.length);
+    }
+    const o = e.target.closest('[data-original]');
+    if (o) fm.elements[o.dataset.original].value = ORIGINALES[o.dataset.original];
+  });
+  fm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    try {
+      cargando(true);
+      const r = await guardarMensajes(Object.fromEntries(Object.keys(ORIGINALES).map((k) => [k, fm.elements[k].value])));
+      aviso(r === 'todos' ? 'Mensajes guardados para todos los dispositivos' : 'Mensajes guardados en este dispositivo (falta ejecutar supabase/007_mensajes.sql para que sean iguales en todos)', r === 'todos' ? 'ok' : 'error');
+    } catch (err) { errorAviso(err); } finally { cargando(false); }
   });
   el.querySelector('[data-form="avisos"]').addEventListener('submit', (e) => {
     e.preventDefault();
